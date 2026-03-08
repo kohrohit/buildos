@@ -1,0 +1,15 @@
+{
+  "name": "Unnamed Project",
+  "description": "",
+  "initialized_at": "2026-03-08T06:51:04.002Z",
+  "governance_version": "gov-000",
+  "brain_files": [
+    "governance/core-policies.md",
+    "governance/coding-rules.md",
+    "governance/architecture-principles.md"
+  ],
+  "active_sprint": null,
+  "total_sprints_completed": 0,
+  "last_review": null,
+  "last_learn": null
+}

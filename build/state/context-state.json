@@ -1,0 +1,12 @@
+{
+  "last_context_pack": null,
+  "loaded_governance": [],
+  "loaded_rules": [
+    "core-policies.md",
+    "coding-rules.md",
+    "architecture-principles.md"
+  ],
+  "active_summaries": [],
+  "compression_log": [],
+  "freshness_check_at": "2026-03-08T06:53:37.320Z"
+}

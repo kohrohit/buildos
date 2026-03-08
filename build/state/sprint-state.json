@@ -1,0 +1,13 @@
+{
+  "sprint_id": null,
+  "goal": null,
+  "status": null,
+  "started_at": null,
+  "completed_at": null,
+  "in_scope": [],
+  "out_of_scope": [],
+  "deliverables": [],
+  "acceptance_criteria": [],
+  "tasks": [],
+  "blockers": []
+}

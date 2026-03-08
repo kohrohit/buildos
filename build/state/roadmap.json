@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "epics": [
+    {
+      "id": "epic-mmhe8t9i-pp3c",
+      "title": "Auth system",
+      "status": "pending",
+      "modules": [],
+      "dependencies": [],
+      "sprint_estimate": 1,
+      "priority": "User authentication and authorization"
+    }
+  ],
+  "current_phase": null,
+  "created_at": "2026-03-08T06:51:12.294Z",
+  "updated_at": "2026-03-08T06:51:12.294Z"
+}
