@@ -18,6 +18,7 @@ cp -r build/commands/*.md .claude/commands/
 
 # Start building
 # /build-init → /build-plan → /build-sprint → /build-execute → /build-verify → /build-review → /build-learn
+# Learning: /build-ingest (logs) → /build-audit (review) | /build-remember (teach directly)
 ```
 
 See [build/README.md](build/README.md) for full documentation.

@@ -102,6 +102,9 @@ Work flows through a structured lifecycle instead of ad-hoc requests:
 init → plan → sprint → execute → verify → review → learn
                 ↑                                      │
                 └──────────────────────────────────────┘
+
+        ingest (logs) → audit (review) ──→ learned patterns
+        remember (explicit teaching) ────→ learned patterns
 ```
 
 - **Plan** — converts your architecture into a prioritized roadmap of epics
@@ -119,13 +122,41 @@ Prevents the #1 problem with AI on large projects — context rot:
 - **Compression policies** — completed sprints become summaries, not token-heavy raw data
 - **Freshness policies** — recent state beats old summaries, code beats stale docs
 
-### Continuous Learning
-BuildOS gets smarter with every sprint:
-- Extracts reusable patterns from completed work
-- Records what worked and what didn't
-- Updates project memory with new decisions
-- Compresses historical context without losing key insights
-- Tracks confidence scores on learned patterns
+### Learning Governance (v0.3.0)
+BuildOS learns from three controlled channels — each with trust-appropriate approval gates, so the system only retains validated knowledge.
+
+**Three input channels:**
+
+| Channel | Command | Trust | Approval | TTL |
+|---------|---------|-------|----------|-----|
+| Explicit teaching | `/build:remember` | High | None — you said it | Evergreen |
+| Sprint review | `/build:learn` | Medium | Inline approve/reject/edit | 90 days |
+| Log analysis | `/build:ingest` | Low | Batched via `/build:audit` | 30 days |
+
+**Why this matters:** Without governance, an AI agent learns garbage alongside gold. A single bad pattern gets reinforced forever. BuildOS prevents this with:
+
+- **Trust-tiered approval gates** — friction matches risk. Explicit teaching saves instantly. Log-derived patterns go to staging and wait for your review.
+- **TTL-based lifecycle** — patterns expire unless reinforced. Sprint patterns live 90 days, log patterns 30 days, explicit teaching is evergreen. Expired patterns surface for review, not silent deletion.
+- **50-pattern cap** — forces pruning. You can't accumulate 200 stale patterns. When at capacity, the system blocks new patterns and tells you to audit.
+- **Mandatory "why"** — every pattern must include reasoning. No naked rules. This lets the system (and you) judge edge cases instead of blindly following rules.
+
+**Staging pipeline:**
+```
+Logs → /build:ingest → staging-patterns.json → /build:audit → learned-patterns.json
+                                                 approve/reject/edit
+```
+
+**Session-start nudge:** Every session, BuildOS checks for pending staged patterns and expiring patterns, and nudges you: *"3 patterns pending review, 2 expiring soon. Run /build-audit when ready."*
+
+**Learning health dashboard** (shown in `/build:status`):
+```
+Learning Health
+├─ Active patterns: 14 (5 high, 6 medium, 3 low trust)
+├─ Staged (pending review): 3
+├─ Expiring within 14 days: 2
+├─ Expired: 0
+└─ Archived: 7
+```
 
 ---
 
@@ -213,8 +244,14 @@ your-project/
 │   │   ├── policies/        # Inclusion, exclusion, compression, freshness
 │   │   ├── templates/       # Context pack definitions
 │   │   └── summaries/       # Compressed historical context
+│   ├── learning/            # Learning governance subsystem
+│   │   ├── analyzer.md      # Format-agnostic log analysis rules
+│   │   ├── staging-policy.md # What enters/exits the staging pipeline
+│   │   └── lifecycle-policy.md # TTL, expiry, reinforcement rules
 │   ├── commands/            # /build:* command definitions
 │   ├── state/               # Runtime state (JSON)
+│   │   ├── learned-patterns.json  # Active learned patterns with trust/TTL
+│   │   └── staging-patterns.json  # Candidates pending review
 │   ├── bin/                 # CLI tool
 │   ├── docs/                # Documentation
 │   ├── hooks.json           # Hook definitions
@@ -353,7 +390,186 @@ Shows:
 
 ---
 
-## Commands Reference
+## Learning Governance — Detailed Guide
+
+BuildOS has a controlled learning system so the agent improves over time without learning garbage. Three input channels, trust-tiered approval, TTL-based expiry.
+
+### Channel 1: Explicit Teaching (`/build:remember`)
+
+The highest-trust channel. When you tell BuildOS to remember something, it saves immediately with no approval gate — you already approved it by saying it.
+
+```
+/build:remember
+```
+
+BuildOS captures the pattern from your conversation. Every pattern requires a "why" — no naked rules.
+
+```
+Pattern Saved (explicit / high trust / evergreen)
+  [explicit] Always use connection pooling for database access
+  Why: Prevents connection exhaustion under concurrent load
+  ID: pat-abc123
+```
+
+**Properties:** trust: high, confidence: 0.9, TTL: evergreen (never expires).
+
+### Channel 2: Sprint Review (`/build:learn`)
+
+After a verified sprint, `/build:learn` extracts patterns from completed work. Each candidate is presented for **inline approval** — you approve, reject, or edit each one before it's saved.
+
+```
+/build:learn
+
+Pattern extracted: [architecture] Service boundaries should align with domain aggregates
+  Why: Reduced coupling between delivery and fleet modules during sprint-003
+  Approve / Reject / Edit? approve
+
+Pattern extracted: [testing] Integration tests need database fixtures for PostGIS
+  Why: Unit tests with mocked geometry passed but integration tests caught coordinate system mismatch
+  Approve / Reject / Edit? approve
+
+Learning Recorded
+  Sprint: sprint-003 — COMPLETED
+  Patterns: 2 approved, 0 rejected, 1 reinforced
+```
+
+**Properties:** trust: medium, confidence: 0.7, TTL: 90 days (resets on reinforcement).
+
+### Channel 3: Log Analysis (`/build:ingest`)
+
+Feed BuildOS any log file — application logs, metrics, error traces, deployment logs, API responses. Format doesn't matter. The system extracts candidate patterns and stages them for batch review.
+
+```
+/build:ingest /var/log/app/production.log
+
+Log Analysis Complete
+  Source: /var/log/app/production.log
+  Patterns Extracted: 4 new, 1 reinforced
+  Staged for Review: 4
+  Next: /build-audit staged
+```
+
+Candidates go to `staging-patterns.json`. Nothing reaches active patterns until you review.
+
+**Properties:** trust: low, confidence: 0.5, TTL: 30 days (resets on reinforcement).
+
+### Reviewing Patterns (`/build:audit`)
+
+The primary governance gate. Three modes:
+
+```bash
+/build:audit staged     # Review pending candidates from log analysis
+/build:audit expiring   # Review patterns expiring within 14 days
+/build:audit            # Full audit — both + health dashboard
+```
+
+**Staged review** — for each candidate: approve (moves to active), reject (deletes), or edit (modify then approve).
+
+**Expiring review** — for patterns nearing TTL expiry: renew (resets TTL), archive, or delete.
+
+**Full audit** — both of the above, plus the learning health dashboard:
+
+```
+Learning Audit
+==============
+
+Staged Patterns: 3 pending
+  stg-001 [operational] Response times degrade above 500 concurrent connections
+    Why: Observed in production.log — p99 latency jumped from 200ms to 2.1s at 512 connections
+  ...
+
+Expiring Patterns: 2 within 14 days
+  pat-007 [performance] Batch job memory peaks at 4GB for 100k records
+    expires: 2026-03-29 | confidence: 0.65 | applied: 3 times
+  ...
+
+Learning Health
+├─ Active patterns: 14 (5 high, 6 medium, 3 low trust)
+├─ Staged (pending review): 3
+├─ Expiring within 14 days: 2
+├─ Expired: 0
+└─ Archived: 7
+```
+
+### Pattern Lifecycle
+
+```
+                    ┌──────────────┐
+                    │   Created    │
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+         explicit     sprint_review  log_analysis
+         trust:high   trust:medium   trust:low
+         TTL:∞        TTL:90d        TTL:30d
+         conf:0.9     conf:0.7       conf:0.5
+              │            │            │
+              │         approve      staging
+              │            │            │
+              │            │         approve
+              │            │            │
+              └────────────┼────────────┘
+                           │
+                    ┌──────▼───────┐
+                    │    Active    │
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+         reinforced    TTL expires   user deletes
+         (resets TTL,      │
+          +0.05 conf)      │
+                    ┌──────▼───────┐
+                    │   Expired    │
+                    │ (surfaces in │
+                    │  /build-audit)│
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+           renew       archive       delete
+         (resets TTL)      │
+                    ┌──────▼───────┐
+                    │   Archived   │
+                    └──────────────┘
+```
+
+### Pattern Schema
+
+Each pattern stored in `learned-patterns.json`:
+
+```json
+{
+  "id": "pat-abc123",
+  "category": "operational",
+  "description": "Connection pool exhaustion occurs above 200 concurrent requests",
+  "why": "Observed across 3 load tests — pool size 50 with 200+ connections caused cascading timeouts",
+  "source": "log_analysis",
+  "trust": "low",
+  "confidence": 0.55,
+  "times_applied": 2,
+  "ttl_days": 30,
+  "expires_at": "2026-04-14T00:00:00.000Z",
+  "created_at": "2026-03-15T10:30:00.000Z",
+  "last_reinforced_at": "2026-03-20T14:00:00.000Z",
+  "source_reference": "/var/log/app/connections.log",
+  "status": "active"
+}
+```
+
+### Governance Rules
+
+1. **Why is mandatory** — no pattern saves without reasoning
+2. **No secrets** — descriptions must not contain credentials, tokens, or PII
+3. **No contradictions** — patterns must not conflict with existing governance rules
+4. **Deduplication** — >80% semantic overlap with existing pattern triggers reinforcement, not new entry
+5. **50-pattern cap** — forces pruning. At capacity, new patterns are blocked until you run `/build:audit`
+6. **Session nudge** — every session start checks for pending/expiring patterns and reminds you
+
+---
+
+
 
 | Command | What it does |
 |---------|-------------|
@@ -363,8 +579,11 @@ Shows:
 | `/build:execute` | Execute current sprint tasks under governance constraints |
 | `/build:verify` | Verify output against acceptance criteria and standards |
 | `/build:review` | Multi-agent review for code quality, security, and architecture |
-| `/build:learn` | Compress completed work into memory, extract patterns |
-| `/build:status` | Show current project state, progress, and health |
+| `/build:learn` | Compress completed work into memory, extract patterns (with inline approval) |
+| `/build:status` | Show current project state, progress, and learning health |
+| `/build:ingest` | Analyze log files, extract candidate patterns, stage for review |
+| `/build:audit` | Review staged patterns, manage expiring patterns, audit learning health |
+| `/build:remember` | Save explicit teaching as high-trust evergreen pattern |
 
 ---
 
