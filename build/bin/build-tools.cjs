@@ -988,6 +988,16 @@ const StatusReporter = {
       output += `  - [${p.category}] ${p.description} (confidence: ${p.confidence})\n`;
     }
 
+    // Learning Health
+    const health = PatternManager.getLearningHealth();
+    output += '\n';
+    output += 'Learning Health\n';
+    output += `├─ Active patterns: ${health.active} (${health.high_trust} high, ${health.medium_trust} medium, ${health.low_trust} low trust)\n`;
+    output += `├─ Staged (pending review): ${health.staged}\n`;
+    output += `├─ Expiring within 14 days: ${health.expiring}\n`;
+    output += `├─ Expired: ${health.expired}\n`;
+    output += `└─ Archived: ${health.archived}\n`;
+
     return output;
   },
 };
@@ -1084,6 +1094,12 @@ const Hooks = {
       ContextCache.isSprintCurrent(sprint.sprint_id);
     }
 
+    // Run migration if needed (one-time)
+    PatternManager.migrate();
+
+    // Expire sweep
+    const expired = PatternManager.expireSweep();
+
     let msg = `BuildOS: "${project.name}" | Gov: ${project.governance_version}\n`;
     if (sprint) {
       const stats = TaskManager.getStats(sprint.sprint_id);
@@ -1091,6 +1107,20 @@ const Hooks = {
     } else {
       msg += 'No active sprint.\n';
     }
+
+    // Learning nudge
+    const staged = PatternManager.getStaged();
+    const expiring = PatternManager.getExpiring(14);
+    if (staged.length > 0 || expiring.length > 0) {
+      const parts = [];
+      if (staged.length > 0) parts.push(`${staged.length} patterns pending review`);
+      if (expiring.length > 0) parts.push(`${expiring.length} expiring soon`);
+      msg += `Learning: ${parts.join(', ')}. Run /build-audit when ready.\n`;
+    }
+    if (expired > 0) {
+      msg += `Expired: ${expired} patterns marked expired this session.\n`;
+    }
+
     return msg;
   },
 
@@ -1312,6 +1342,99 @@ const Commands = {
     console.log(StatusReporter.generate());
   },
 
+  ingest(args) {
+    if (!StateManager.isInitialized()) {
+      console.error('Not initialized. Run /build-init.');
+      process.exit(1);
+    }
+    const filePath = args[0];
+    if (!filePath) {
+      console.error('Usage: build-tools.cjs ingest <file-path>');
+      console.error('Provide a log file path to analyze.');
+      process.exit(1);
+    }
+    const patterns = loadState('patterns') || { patterns: [] };
+    const staging = loadState('staging') || { patterns: [] };
+    console.log(`Ingest: Analyzing ${filePath}`);
+    console.log(`Existing patterns: ${patterns.patterns.length} | Staged: ${staging.patterns.length}`);
+    console.log('Use /build-ingest command to run full LLM-driven analysis.');
+  },
+
+  audit(args) {
+    if (!StateManager.isInitialized()) {
+      console.error('Not initialized. Run /build-init.');
+      process.exit(1);
+    }
+    const mode = args[0] || 'full';
+    const validModes = ['staged', 'expiring', 'full'];
+    if (!validModes.includes(mode)) {
+      console.error(`Invalid mode: ${mode}. Use: ${validModes.join(', ')}`);
+      process.exit(1);
+    }
+
+    if (mode === 'staged' || mode === 'full') {
+      const staged = PatternManager.getStaged();
+      console.log(`\nStaged Patterns: ${staged.length} pending review`);
+      for (const p of staged) {
+        console.log(`  ${p.id} [${p.category}] ${p.description}`);
+        if (p.why) console.log(`    Why: ${p.why}`);
+      }
+    }
+
+    if (mode === 'expiring' || mode === 'full') {
+      const expiring = PatternManager.getExpiring(14);
+      console.log(`\nExpiring Patterns: ${expiring.length} within 14 days`);
+      for (const p of expiring) {
+        console.log(`  ${p.id} [${p.category}] ${p.description} (expires: ${p.expires_at})`);
+      }
+    }
+
+    if (mode === 'full') {
+      const health = PatternManager.getLearningHealth();
+      console.log(`\nLearning Health`);
+      console.log(`├─ Active patterns: ${health.active} (${health.high_trust} high, ${health.medium_trust} medium, ${health.low_trust} low trust)`);
+      console.log(`├─ Staged (pending review): ${health.staged}`);
+      console.log(`├─ Expiring within 14 days: ${health.expiring}`);
+      console.log(`├─ Expired: ${health.expired}`);
+      console.log(`└─ Archived: ${health.archived}`);
+    }
+  },
+
+  remember(args) {
+    if (!StateManager.isInitialized()) {
+      console.error('Not initialized. Run /build-init.');
+      process.exit(1);
+    }
+    const description = args[0] || '';
+    const why = args[1] || '';
+    if (!description) {
+      console.error('Usage: build-tools.cjs remember <description> <why>');
+      process.exit(1);
+    }
+    if (!why) {
+      console.error('A "why" reason is required. No naked rules without reasoning.');
+      console.error('Usage: build-tools.cjs remember <description> <why>');
+      process.exit(1);
+    }
+    const pat = PatternManager.addPattern({
+      category: 'explicit',
+      description,
+      why: why || null,
+      source: 'explicit',
+      trust: 'high',
+      ttl_days: 0,
+      confidence: 0.9,
+    });
+    if (pat.error) {
+      console.error(pat.error);
+      process.exit(1);
+    }
+    console.log(`Pattern Saved (explicit / high trust / evergreen)`);
+    console.log(`  [${pat.category}] ${pat.description}`);
+    if (pat.why) console.log(`  Why: ${pat.why}`);
+    console.log(`  ID: ${pat.id}`);
+  },
+
   // --- Sub-operations called by hooks and commands ---
 
   'add-epic': function(args) {
@@ -1437,6 +1560,9 @@ function main() {
     console.log('  complete-task <id> [files]   Mark task completed');
     console.log('  add-pattern <cat> <desc>     Record learned pattern');
     console.log('  add-blocker <description>    Add blocker to sprint');
+    console.log('  ingest <file>                Analyze logs for patterns');
+    console.log('  audit [staged|expiring]      Review and manage learned patterns');
+    console.log('  remember <desc> <why>        Save explicit teaching pattern');
     console.log('  validate [target]            Validate state files');
     console.log('  hook <hook-name>             Run hook handler');
     process.exit(0);
