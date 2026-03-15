@@ -1,3 +1,7 @@
+---
+model: claude-sonnet-4-6
+---
+
 # Execution Agent: Verifier
 
 ## Purpose

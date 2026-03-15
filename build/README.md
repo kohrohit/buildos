@@ -1,6 +1,6 @@
 # BuildOS
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Platform](https://img.shields.io/badge/platform-Claude%20Code-purple)
 ![Status](https://img.shields.io/badge/status-beta-orange)
@@ -37,17 +37,19 @@ A persistent knowledge base that holds your project's truth:
 - **Architecture Decision Records** — every significant decision documented with context and rationale
 
 ### Specialist Agents
-Purpose-built agents that bring expert perspectives to your project:
+Purpose-built agents that bring expert perspectives to your project. Agents are **model-routed** for cost efficiency without quality loss:
 
-| Agent | Role |
-|-------|------|
-| **Architect** | System design, scalability analysis, technology decisions |
-| **Security Reviewer** | OWASP top 10, auth flows, secrets management, PII handling |
-| **Code Reviewer** | Clean code, SOLID principles, complexity, test coverage |
-| **Backend Engineer** | API design, database patterns, service architecture |
-| **QA Verifier** | Test strategy, acceptance criteria validation, regression checks |
-| **Documentation Writer** | API docs, runbooks, architecture docs, decision records |
-| **Platform Engineer** | CI/CD, Docker, deployment, monitoring, infrastructure |
+| Agent | Role | Model |
+|-------|------|-------|
+| **Architect** | System design, scalability analysis, technology decisions | Opus |
+| **Security Reviewer** | OWASP top 10, auth flows, secrets management, PII handling | Opus |
+| **Backend Engineer** | API design, database patterns, service architecture | Opus |
+| **Code Reviewer** | Clean code, SOLID principles, complexity, test coverage | Sonnet |
+| **QA Verifier** | Test strategy, acceptance criteria validation, regression checks | Sonnet |
+| **Documentation Writer** | API docs, runbooks, architecture docs, decision records | Sonnet |
+| **Platform Engineer** | CI/CD, Docker, deployment, monitoring, infrastructure | Sonnet |
+
+High-stakes decisions (architecture, security, production code) use Opus. Structured checklist work (code review, QA, docs) uses Sonnet — same quality, ~35% lower cost.
 
 ### Coding Standards Enforcement
 Built-in rules for multiple languages and frameworks:
@@ -58,6 +60,32 @@ Built-in rules for multiple languages and frameworks:
 - **React** — Next.js App Router, Server Components, state management, Core Web Vitals
 
 Add your own rules by dropping a markdown file into `governance/rules/`.
+
+### Unbiased Isolated Reviews (v0.2.0)
+Review agents are spawned in **separate worktrees with zero knowledge** of the execution session. This eliminates self-review bias — the same brain that wrote the code cannot grade its own exam.
+
+- **Blind review context pack** — strips implementation reasoning, mid-sprint decisions, and commit messages. Reviewers see only the spec and the code.
+- **Independence Mandate** — every reviewer is explicitly instructed: *"You have no knowledge of how or why this code was written. Your job is to find what is wrong, not to confirm what is right."*
+- **Cross-agent escalation** — if 2+ agents flag the same area, it's auto-elevated to a blocker regardless of individual severity.
+
+### Architecture Discovery (v0.2.0)
+Before any epic is defined, `/build-plan` runs a mandatory architecture discovery phase:
+
+1. **Classify system grade** — PoC, MVP, Production, Enterprise, or Mission-Critical
+2. **Ask grade-appropriate questions** — PoC gets 4 questions, Enterprise gets 21, Mission-Critical gets 27
+3. **Provide opinionated recommendations** — challenges assumptions, suggests patterns grounded in DDIA, SRE, Building Microservices principles
+4. **Auto-populate NFRs** — sensible defaults per grade (uptime SLAs, latency targets, security posture)
+5. **Generate architecture artifacts** — populates `architecture.md`, `nfrs.md`, and creates the first ADR
+
+Architecture then acts as a **guardrail at every subsequent stage** — sprint definition, execution, verification, and review all enforce conformance.
+
+### Token & Cost Optimization (v0.2.0)
+Every token is treated as currency:
+
+- **Token accounting** — hard budget ceilings per context pack, priority-based dropping when exceeded, transparent logging of what was dropped and why
+- **Session-level caching** — governance rules and coding standards loaded once per session, reused across commands
+- **Optimized hooks** — full governance reminder only on first tool call, silent after. Post-edit hook removed. Progress reported every 5th call, not every call.
+- **Model routing** — Opus for judgment-heavy decisions, Sonnet for structured checklist work (~35% agent cost savings)
 
 ### Quality Hooks
 Automated checks that run at key moments:
@@ -141,7 +169,7 @@ Key rule: **Execution operates inside governance boundaries.** It can propose ch
 
 ```bash
 # Clone the BuildOS repository
-git clone https://github.com/your-org/build.git /tmp/buildos
+git clone https://github.com/kohrohit/buildos.git /tmp/buildos
 
 # Copy into your project
 cp -r /tmp/buildos/build/ /path/to/your-project/build/
@@ -154,7 +182,7 @@ rm -rf /tmp/buildos
 
 ```bash
 cd /path/to/your-project
-git clone https://github.com/your-org/build.git build
+git clone https://github.com/kohrohit/buildos.git build
 ```
 
 ### Verify installation
@@ -211,59 +239,15 @@ This creates:
 - Empty state files in `state/`
 - Default context configuration
 
-### Step 2: Fill in your project brain
-
-Edit the brain files with your project's specifics:
-
-**`governance/brain/vision.md`** — What are you building?
-```markdown
-## Product Vision
-A REST API for real-time logistics tracking with predictive ETAs.
-
-## Target Users
-- Fleet managers needing live vehicle tracking
-- Operations teams monitoring delivery SLAs
-
-## Success Criteria
-- Sub-second location updates
-- ETA predictions within 15% accuracy
-- 99.9% API uptime
-```
-
-**`governance/brain/architecture.md`** — How is it designed?
-```markdown
-## Tech Stack
-- Runtime: Python 3.12 + FastAPI
-- Database: PostgreSQL 16 + PostGIS
-- Cache: Redis
-- Queue: RabbitMQ
-- Deployment: Docker + Kubernetes
-
-## Module Boundaries
-- tracking-service: GPS ingestion, location storage
-- eta-service: ML-based ETA prediction
-- notification-service: Webhooks and alerts
-- api-gateway: Authentication, rate limiting, routing
-```
-
-**`governance/brain/domain-model.md`** — What are the core entities?
-```markdown
-## Entities
-- Vehicle: id, fleet_id, current_location, status
-- Delivery: id, vehicle_id, origin, destination, eta, actual_arrival
-- Fleet: id, name, owner_id, vehicles[]
-- Geofence: id, boundary_polygon, trigger_rules[]
-```
-
-Also fill in `non-functional-requirements.md` and `glossary.md`.
-
-### Step 3: Plan your roadmap
+### Step 2: Plan your roadmap (includes architecture discovery)
 
 ```
 /build:plan
 ```
 
-BuildOS reads your brain files and produces a prioritized roadmap:
+BuildOS first runs **architecture discovery** — asking what grade of system you're building (PoC through Mission-Critical), then asking the right questions at the right depth. It populates `architecture.md`, `nfrs.md`, and creates your first ADR automatically.
+
+Then it produces a prioritized roadmap:
 
 ```
 Roadmap Generated:
@@ -323,26 +307,21 @@ BuildOS works through each task:
 /build:verify
 ```
 
-Runs verification against your acceptance criteria:
-- Are all migrations reversible?
-- Do all models have timestamps?
-- Are foreign keys enforced?
-- Is PostGIS configured correctly?
-- Does test coverage meet the 90% target?
+Spawns **isolated review agents** in separate worktrees with blind context (no knowledge of how the code was written). Checks acceptance criteria, runs tests, linter, and type checker. Architecture violations always cause FAIL.
 
-Produces a verification report with pass/fail per criterion.
-
-### Step 7: Review with specialist agents
+### Step 7: Deep review with isolated specialist agents
 
 ```
 /build:review
 ```
 
-Multi-agent review:
-- **Code Reviewer** checks naming, complexity, SOLID principles
-- **Security Reviewer** checks SQL injection risks, input validation
-- **Architect** checks module boundaries, dependency direction
-- Produces a structured review report with findings and recommendations
+Spawns 4 **fully isolated agents in parallel** — each in its own worktree, seeing only the spec and the code:
+- **Code Reviewer** (Sonnet) — naming, complexity, SOLID, DRY, test coverage
+- **Security Reviewer** (Opus) — OWASP Top 10, secrets, input validation, auth
+- **Architect** (Opus) — module boundaries, dependency direction, ADR conformance
+- **QA Verifier** (Sonnet) — acceptance criteria coverage, test gaps, edge cases
+
+Cross-agent escalation: if 2+ agents flag the same area, it becomes an auto-blocker.
 
 ### Step 8: Learn and compress
 
@@ -421,7 +400,7 @@ Create `governance/agents/your-agent.md`:
 name: your-agent
 description: What this agent does
 tools: ["Read", "Grep", "Glob"]
-model: opus
+model: claude-sonnet-4-6  # Use claude-opus-4-6 for high-stakes judgment
 ---
 
 ## Purpose

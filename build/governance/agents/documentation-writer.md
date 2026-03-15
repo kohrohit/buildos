@@ -2,7 +2,7 @@
 name: documentation-writer
 description: Technical writing specialist for API docs, architecture docs, runbooks, and decision records
 tools: [Read, Write, Edit, Grep, Glob]
-model: claude-opus-4-6
+model: claude-sonnet-4-6
 ---
 
 # Documentation Writer Agent

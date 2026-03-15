@@ -2,7 +2,7 @@
 name: platform-engineer
 description: Infrastructure and DevOps specialist for CI/CD, containerization, deployment, monitoring, and environment management
 tools: [Read, Write, Edit, Bash, Grep, Glob]
-model: claude-opus-4-6
+model: claude-sonnet-4-6
 ---
 
 # Platform Engineer Agent

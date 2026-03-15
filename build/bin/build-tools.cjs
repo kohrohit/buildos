@@ -86,6 +86,148 @@ function readTextFile(filePath) {
 }
 
 // ---------------------------------------------------------------------------
+// Token accounting — enforce budgets, prevent overages
+// ---------------------------------------------------------------------------
+
+const TokenCounter = {
+  // Conservative estimate: ~4 chars per token (errs on the side of caution)
+  estimate(text) {
+    if (!text) return 0;
+    return Math.ceil(text.length / 4);
+  },
+
+  /**
+   * Assemble content within a token budget. Items must be sorted by priority
+   * (highest first). Returns { loaded, dropped, tokensUsed, budget }.
+   */
+  assembleWithBudget(items, budget) {
+    let used = 0;
+    const loaded = [];
+    const dropped = [];
+
+    for (const item of items) {
+      const tokens = this.estimate(item.content);
+      if (used + tokens <= budget) {
+        loaded.push({ ...item, tokens });
+        used += tokens;
+      } else {
+        dropped.push({ name: item.name, tokens, reason: 'budget_exceeded' });
+      }
+    }
+
+    return { loaded, dropped, tokensUsed: used, budget };
+  },
+
+  /**
+   * Log a budget report for debugging and transparency.
+   */
+  report(packName, result) {
+    let msg = `Context Budget: ${packName}\n`;
+    msg += `  Used: ${result.tokensUsed}/${result.budget} tokens (${Math.round((result.tokensUsed / result.budget) * 100)}%)\n`;
+    if (result.dropped.length > 0) {
+      msg += `  Dropped (${result.dropped.length}):\n`;
+      for (const d of result.dropped) {
+        msg += `    - ${d.name} (~${d.tokens} tokens): ${d.reason}\n`;
+      }
+    }
+    return msg;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Session-level context cache — load once, reuse across commands
+// ---------------------------------------------------------------------------
+
+const CACHE_FILE = path.join(STATE_DIR, '.session-cache.json');
+
+const ContextCache = {
+  _cache: null,
+
+  /**
+   * Load cache from disk (persists within a session via file).
+   */
+  _load() {
+    if (this._cache) return this._cache;
+    this._cache = loadJSON(CACHE_FILE) || {
+      governance_version: null,
+      governance_rules: null,
+      coding_rules: {},       // keyed by language
+      sprint_id: null,        // cache invalidates on sprint change
+      cached_at: null,
+    };
+    return this._cache;
+  },
+
+  _save() {
+    if (this._cache) saveJSON(CACHE_FILE, this._cache);
+  },
+
+  /**
+   * Get cached governance rules, or null if stale.
+   * Cache is valid if governance version hasn't changed.
+   */
+  getGovernance() {
+    const cache = this._load();
+    const currentVersion = Governance.computeVersion();
+    if (cache.governance_version === currentVersion && cache.governance_rules) {
+      return cache.governance_rules;
+    }
+    return null; // stale, caller should reload
+  },
+
+  /**
+   * Cache governance rules after loading.
+   */
+  setGovernance(rules) {
+    const cache = this._load();
+    cache.governance_version = Governance.computeVersion();
+    cache.governance_rules = rules;
+    cache.cached_at = now();
+    this._save();
+  },
+
+  /**
+   * Get cached coding rules for a language, or null if not cached.
+   */
+  getCodingRules(language) {
+    const cache = this._load();
+    return cache.coding_rules[language] || null;
+  },
+
+  /**
+   * Cache coding rules for a language.
+   */
+  setCodingRules(language, content) {
+    const cache = this._load();
+    cache.coding_rules[language] = { content, cached_at: now() };
+    this._save();
+  },
+
+  /**
+   * Check if cache is for current sprint. If sprint changed, invalidate.
+   */
+  isSprintCurrent(sprintId) {
+    const cache = this._load();
+    if (cache.sprint_id !== sprintId) {
+      // Sprint changed — invalidate sprint-specific caches
+      cache.sprint_id = sprintId;
+      cache.coding_rules = {};
+      this._save();
+      return false;
+    }
+    return true;
+  },
+
+  /**
+   * Clear all caches (called at session end or sprint completion).
+   */
+  clear() {
+    this._cache = null;
+    try { fs.unlinkSync(CACHE_FILE); } catch { /* ignore */ }
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 1. State Management — CRUD for all state files
 // ---------------------------------------------------------------------------
 
@@ -159,12 +301,19 @@ const Governance = {
   },
 
   loadRules() {
+    // Check session cache first
+    const cached = ContextCache.getGovernance();
+    if (cached) return cached;
+
     const rules = [];
     for (const f of GOVERNANCE_FILES) {
       const content = readTextFile(path.join(GOV_DIR, f));
       if (content) rules.push({ file: f, loaded: true, size: content.length });
       else rules.push({ file: f, loaded: false, size: 0 });
     }
+
+    // Cache for reuse within session
+    ContextCache.setGovernance(rules);
     return rules;
   },
 };
@@ -173,18 +322,56 @@ const Governance = {
 // 3. Context pack assembly
 // ---------------------------------------------------------------------------
 
+// Token budgets per context pack (target / hard ceiling)
+const PACK_BUDGETS = {
+  planning:  { target: 5500, ceiling: 7000 },
+  execution: { target: 4300, ceiling: 5500 },
+  review:    { target: 4500, ceiling: 6000 },  // blind review (reduced from 7500)
+  sprint:    { target: 6000, ceiling: 7500 },
+};
+
 const ContextPack = {
   assemble(packName) {
-    const pack = { name: packName, files: [], governance: [], timestamp: now() };
+    const budget = PACK_BUDGETS[packName] || { target: 5000, ceiling: 6500 };
+    const pack = { name: packName, files: [], governance: [], timestamp: now(), budget: null };
 
-    // Always load governance
+    // Load governance (cached within session)
     const rules = Governance.loadRules();
     pack.governance = rules.filter(r => r.loaded).map(r => r.file);
 
-    // Load pack-specific context file if it exists
+    // Build priority-ordered items for budget enforcement
+    const items = [];
+
+    // Governance files — highest priority
+    for (const f of GOVERNANCE_FILES) {
+      const content = readTextFile(path.join(GOV_DIR, f));
+      if (content) {
+        items.push({ name: `governance/${f}`, content, priority: 1 });
+      }
+    }
+
+    // Pack-specific context file
     const contextFile = path.join(CONTEXT_DIR, `${packName}-context.md`);
     if (fileExists(contextFile)) {
-      pack.files.push(contextFile);
+      const content = readTextFile(contextFile);
+      if (content) {
+        items.push({ name: `context/${packName}`, content, priority: 2 });
+        pack.files.push(contextFile);
+      }
+    }
+
+    // Enforce token budget
+    const result = TokenCounter.assembleWithBudget(items, budget.ceiling);
+    pack.budget = {
+      target: budget.target,
+      ceiling: budget.ceiling,
+      used: result.tokensUsed,
+      dropped: result.dropped,
+    };
+
+    // Log budget report if anything was dropped
+    if (result.dropped.length > 0) {
+      console.error(TokenCounter.report(packName, result));
     }
 
     // Update context state
@@ -193,6 +380,7 @@ const ContextPack = {
     ctx.loaded_governance = pack.governance;
     ctx.loaded_rules = rules.map(r => r.file);
     ctx.freshness_check_at = now();
+    ctx.last_budget_report = pack.budget;
     saveState('context', ctx);
 
     return pack;
@@ -206,6 +394,7 @@ const ContextPack = {
       governance: ctx.loaded_governance,
       summaries: ctx.active_summaries ? ctx.active_summaries.length : 0,
       fresh: ctx.freshness_check_at,
+      budget: ctx.last_budget_report || null,
     };
   },
 };
@@ -645,61 +834,98 @@ const StatusReporter = {
 // 10. Hook helpers
 // ---------------------------------------------------------------------------
 
+// Hook call counter — tracks invocations to reduce redundant output
+const HOOK_COUNTER_FILE = path.join(STATE_DIR, '.hook-counts.json');
+
+function getHookCounts() {
+  return loadJSON(HOOK_COUNTER_FILE) || { preBash: 0, preEdit: 0, postEdit: 0, postBash: 0 };
+}
+
+function incrementHook(name) {
+  const counts = getHookCounts();
+  counts[name] = (counts[name] || 0) + 1;
+  saveJSON(HOOK_COUNTER_FILE, counts);
+  return counts[name];
+}
+
 const Hooks = {
   preBash() {
     if (!StateManager.isInitialized()) return '';
-    const sprint = SprintManager.getActive();
-    let msg = '--- BuildOS Governance Reminder ---\n';
-    msg += 'Follow coding-rules.md and architecture-principles.md.\n';
-    if (sprint) {
-      msg += `Active sprint: ${sprint.sprint_id} — ${sprint.goal}\n`;
-      msg += `Scope: ${sprint.in_scope.join(', ') || 'see sprint state'}\n`;
+    const count = incrementHook('preBash');
+
+    // Full reminder on first call, minimal on subsequent
+    if (count === 1) {
+      const sprint = SprintManager.getActive();
+      let msg = '--- BuildOS Active ---\n';
+      msg += 'Governance: coding-rules.md, architecture-principles.md\n';
+      if (sprint) {
+        msg += `Sprint: ${sprint.sprint_id} — ${sprint.goal}\n`;
+        msg += `Scope: ${sprint.in_scope.join(', ') || 'see sprint state'}\n`;
+      }
+      return msg;
     }
-    return msg;
+    // Subsequent calls: silent (governance already loaded in context)
+    return '';
   },
 
   preEdit() {
     if (!StateManager.isInitialized()) return '';
-    const sprint = SprintManager.getActive();
-    if (!sprint) return '';
-    let msg = '--- BuildOS Scope Check ---\n';
-    msg += `Sprint scope: ${sprint.in_scope.join(', ') || 'all in-scope items'}\n`;
-    msg += `Out of scope: ${sprint.out_of_scope.join(', ') || 'none declared'}\n`;
-    return msg;
+    const count = incrementHook('preEdit');
+
+    // Only remind scope on first edit, not every file
+    if (count === 1) {
+      const sprint = SprintManager.getActive();
+      if (!sprint) return '';
+      return `--- BuildOS Scope: ${sprint.in_scope.join(', ') || 'see sprint'} ---`;
+    }
+    return '';
   },
 
   postEdit() {
-    if (!StateManager.isInitialized()) return '';
-    let msg = '--- BuildOS Quality Gate ---\n';
-    msg += 'Verify: naming conventions, error handling, no hardcoded secrets.\n';
-    return msg;
+    // Removed: quality gate reminder on every edit wastes context.
+    // Governance rules are loaded at session start and in context packs.
+    return '';
   },
 
   postBash() {
     if (!StateManager.isInitialized()) return '';
     const sprint = SprintManager.getActive();
     if (!sprint) return '';
+
+    const count = incrementHook('postBash');
     const stats = TaskManager.getStats(sprint.sprint_id);
-    let msg = '--- BuildOS Build Check ---\n';
-    msg += `Sprint progress: ${stats.completed}/${stats.total} tasks complete.\n`;
+
+    // Only report on milestone events, not every bash call
     if (stats.completed === stats.total && stats.total > 0) {
-      msg += 'All tasks complete! Consider running /build-verify.\n';
+      return `BuildOS: All ${stats.total} tasks complete. Run /build-verify.`;
     }
-    return msg;
+    // Report progress every 5th call to reduce noise
+    if (count % 5 === 0) {
+      return `BuildOS: ${stats.completed}/${stats.total} tasks.`;
+    }
+    return '';
   },
 
   sessionStart() {
+    // Reset hook counters for new session
+    saveJSON(HOOK_COUNTER_FILE, { preBash: 0, preEdit: 0, postEdit: 0, postBash: 0 });
+
     if (!StateManager.isInitialized()) {
-      return 'BuildOS: No project initialized. Run /build-init to start.';
+      return 'BuildOS: Not initialized. Run /build-init.';
     }
     const project = loadState('project');
     const sprint = SprintManager.getActive();
-    let msg = `BuildOS: Project "${project.name}" loaded.\n`;
-    msg += `Governance: ${project.governance_version}\n`;
+
+    // Pre-warm caches at session start
+    Governance.loadRules();
     if (sprint) {
-      msg += `Active sprint: ${sprint.sprint_id} — ${sprint.goal}\n`;
+      ContextCache.isSprintCurrent(sprint.sprint_id);
+    }
+
+    let msg = `BuildOS: "${project.name}" | Gov: ${project.governance_version}\n`;
+    if (sprint) {
       const stats = TaskManager.getStats(sprint.sprint_id);
-      msg += `Tasks: ${stats.completed}/${stats.total} complete.\n`;
+      msg += `Sprint: ${sprint.sprint_id} — ${sprint.goal} (${stats.completed}/${stats.total})\n`;
     } else {
       msg += 'No active sprint.\n';
     }
@@ -708,13 +934,15 @@ const Hooks = {
 
   stop() {
     if (!StateManager.isInitialized()) return '';
-    // Persist freshness timestamp
     const ctx = loadState('context');
     if (ctx) {
       ctx.freshness_check_at = now();
       saveState('context', ctx);
     }
-    return 'BuildOS: Session state persisted.';
+    // Clean up session cache
+    ContextCache.clear();
+    try { fs.unlinkSync(HOOK_COUNTER_FILE); } catch { /* ignore */ }
+    return 'BuildOS: Session persisted, cache cleared.';
   },
 };
 
@@ -909,6 +1137,7 @@ const Commands = {
     // Complete sprint if active
     if (sprint.status === 'active') {
       SprintManager.complete();
+      ContextCache.clear(); // Invalidate session cache on sprint completion
       console.log('Sprint marked as completed.');
     }
 
