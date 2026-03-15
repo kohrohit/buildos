@@ -10,7 +10,7 @@ Display a comprehensive view of the current project state including roadmap posi
 ## Context Pack
 Load: minimal — only state files, no governance (read-only operation)
 
-Load: `state/current-project.json`, `state/roadmap.json`, `state/sprint-state.json`, `state/task-state.json`, `state/context-state.json`, `state/learned-patterns.json`
+Load: `state/current-project.json`, `state/roadmap.json`, `state/sprint-state.json`, `state/task-state.json`, `state/context-state.json`, `state/learned-patterns.json`, `state/staging-patterns.json`
 
 ## Steps
 
@@ -50,6 +50,12 @@ Load: `state/current-project.json`, `state/roadmap.json`, `state/sprint-state.js
    - Last 5 learned patterns
    - Highest confidence patterns
 
+9. **Learning health**
+   - Active pattern count by trust level (high, medium, low)
+   - Staged patterns pending review
+   - Patterns expiring within 14 days
+   - Expired and archived pattern counts
+
 ## Governance Checks
 - None (read-only command)
 
@@ -86,4 +92,11 @@ Last Review: {date} — {outcome}
 Recent Patterns: {n} learned
   - {pattern_1}
   - {pattern_2}
+
+Learning Health
+├─ Active patterns: {n} ({high} high, {med} medium, {low} low trust)
+├─ Staged (pending review): {n}
+├─ Expiring within 14 days: {n}
+├─ Expired: {n}
+└─ Archived: {n}
 ```
