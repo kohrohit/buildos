@@ -22,6 +22,7 @@ const STATE_FILES = {
   task: 'task-state.json',
   context: 'context-state.json',
   patterns: 'learned-patterns.json',
+  staging: 'staging-patterns.json',
 };
 
 const GOVERNANCE_FILES = [
@@ -269,6 +270,7 @@ const StateManager = {
       compression_log: [], freshness_check_at: null,
     });
     saveState('patterns', { patterns: [], last_updated: null });
+    saveState('staging', { patterns: [], last_updated: null });
   },
 };
 
@@ -659,16 +661,39 @@ const RoadmapManager = {
 // ---------------------------------------------------------------------------
 
 const PatternManager = {
-  addPattern(category, description, sourceSprintId, confidence) {
+  addPattern(opts) {
     const patterns = loadState('patterns') || { patterns: [], last_updated: null };
+
+    // Enforce 50-pattern cap
+    const activeCount = patterns.patterns.filter(p => p.status === 'active').length;
+    if (activeCount >= 50) {
+      return { error: 'At 50-pattern limit. Run /build-audit to prune.' };
+    }
+
+    const source = opts.source || 'sprint_review';
+    const trustMap = { explicit: 'high', sprint_review: 'medium', log_analysis: 'low' };
+    const ttlMap = { explicit: 0, sprint_review: 90, log_analysis: 30 };
+    const confMap = { explicit: 0.9, sprint_review: 0.7, log_analysis: 0.5 };
+
+    const trust = opts.trust || trustMap[source] || 'medium';
+    const ttlDays = opts.ttl_days != null ? opts.ttl_days : (ttlMap[source] || 90);
+    const confidence = opts.confidence != null ? opts.confidence : (confMap[source] || 0.7);
+
     const pattern = {
       id: genId('pat'),
-      category,
-      description,
-      source_sprint: sourceSprintId,
-      confidence: confidence || 0.7,
-      times_applied: 1,
+      category: opts.category || 'general',
+      description: opts.description || '',
+      why: opts.why || null,
+      source: source,
+      trust: trust,
+      confidence: confidence,
+      times_applied: 0,
+      ttl_days: ttlDays,
+      expires_at: ttlDays === 0 ? null : new Date(Date.now() + ttlDays * 86400000).toISOString(),
       created_at: now(),
+      last_reinforced_at: null,
+      source_reference: opts.source_reference || null,
+      status: 'active',
     };
     patterns.patterns.push(pattern);
     patterns.last_updated = now();
@@ -683,6 +708,10 @@ const PatternManager = {
     if (pat) {
       pat.times_applied += 1;
       pat.confidence = Math.min(1.0, pat.confidence + 0.05);
+      pat.last_reinforced_at = now();
+      if (pat.ttl_days && pat.ttl_days > 0) {
+        pat.expires_at = new Date(Date.now() + pat.ttl_days * 86400000).toISOString();
+      }
       patterns.last_updated = now();
       saveState('patterns', patterns);
     }
@@ -703,6 +732,139 @@ const PatternManager = {
     return patterns.patterns
       .filter(p => p.confidence >= (threshold || 0.8))
       .sort((a, b) => b.confidence - a.confidence);
+  },
+
+  migrate() {
+    const patterns = loadState('patterns');
+    if (!patterns || !patterns.patterns || patterns.patterns.length === 0) return;
+    let migrated = false;
+    for (const pat of patterns.patterns) {
+      if (!pat.source) {
+        pat.source = 'sprint_review';
+        pat.trust = 'medium';
+        pat.status = 'active';
+        pat.ttl_days = 90;
+        pat.why = pat.why || null;
+        pat.last_reinforced_at = pat.last_reinforced_at || null;
+        pat.source_reference = pat.source_sprint || null;
+        pat.expires_at = pat.created_at
+          ? new Date(new Date(pat.created_at).getTime() + 90 * 86400000).toISOString()
+          : null;
+        delete pat.source_sprint;
+        migrated = true;
+      }
+    }
+    if (migrated) {
+      patterns.last_updated = now();
+      saveState('patterns', patterns);
+    }
+    return migrated;
+  },
+
+  getExpiring(withinDays) {
+    const patterns = loadState('patterns');
+    if (!patterns || !patterns.patterns) return [];
+    const horizon = new Date(Date.now() + (withinDays || 14) * 86400000).toISOString();
+    return patterns.patterns.filter(p =>
+      p.status === 'active' && p.expires_at && p.expires_at <= horizon
+    );
+  },
+
+  expireSweep() {
+    const patterns = loadState('patterns');
+    if (!patterns || !patterns.patterns) return 0;
+    const today = now();
+    let expired = 0;
+    for (const pat of patterns.patterns) {
+      if (pat.status === 'active' && pat.expires_at && pat.expires_at <= today) {
+        pat.status = 'expired';
+        expired++;
+      }
+    }
+    if (expired > 0) {
+      patterns.last_updated = now();
+      saveState('patterns', patterns);
+    }
+    return expired;
+  },
+
+  getStaged() {
+    const staging = loadState('staging') || { patterns: [], last_updated: null };
+    return staging.patterns;
+  },
+
+  addStaged(opts) {
+    const staging = loadState('staging') || { patterns: [], last_updated: null };
+    const confMap = { explicit: 0.9, sprint_review: 0.7, log_analysis: 0.5 };
+    const pattern = {
+      id: genId('stg'),
+      category: opts.category || 'general',
+      description: opts.description || '',
+      why: opts.why || null,
+      source: opts.source || 'log_analysis',
+      trust: opts.trust || 'low',
+      confidence: opts.confidence != null ? opts.confidence : (confMap[opts.source] || 0.5),
+      times_applied: 0,
+      ttl_days: opts.ttl_days != null ? opts.ttl_days : 30,
+      created_at: now(),
+      last_reinforced_at: null,
+      source_reference: opts.source_reference || null,
+      expires_at: null,
+      status: 'staged',
+    };
+    staging.patterns.push(pattern);
+    staging.last_updated = now();
+    saveState('staging', staging);
+    return pattern;
+  },
+
+  approveStaged(patternId) {
+    const staging = loadState('staging') || { patterns: [], last_updated: null };
+    const idx = staging.patterns.findIndex(p => p.id === patternId);
+    if (idx === -1) return null;
+
+    const pat = staging.patterns[idx];
+    staging.patterns.splice(idx, 1);
+    staging.last_updated = now();
+    saveState('staging', staging);
+
+    return PatternManager.addPattern({
+      category: pat.category,
+      description: pat.description,
+      why: pat.why,
+      source: pat.source,
+      trust: pat.trust,
+      confidence: pat.confidence,
+      ttl_days: pat.ttl_days,
+      source_reference: pat.source_reference,
+    });
+  },
+
+  rejectStaged(patternId) {
+    const staging = loadState('staging') || { patterns: [], last_updated: null };
+    const idx = staging.patterns.findIndex(p => p.id === patternId);
+    if (idx === -1) return false;
+    staging.patterns.splice(idx, 1);
+    staging.last_updated = now();
+    saveState('staging', staging);
+    return true;
+  },
+
+  getLearningHealth() {
+    const patterns = loadState('patterns') || { patterns: [] };
+    const staging = loadState('staging') || { patterns: [] };
+    const active = patterns.patterns.filter(p => p.status === 'active');
+    const expiring = PatternManager.getExpiring(14);
+    return {
+      active: active.length,
+      high_trust: active.filter(p => p.trust === 'high').length,
+      medium_trust: active.filter(p => p.trust === 'medium').length,
+      low_trust: active.filter(p => p.trust === 'low').length,
+      staged: staging.patterns.length,
+      expiring: expiring.length,
+      expired: patterns.patterns.filter(p => p.status === 'expired').length,
+      archived: patterns.patterns.filter(p => p.status === 'archived').length,
+    };
   },
 };
 
@@ -1027,7 +1189,7 @@ const Commands = {
     if (!govCheck.ok) {
       console.log(`  WARNING: Missing governance files: ${govCheck.missing.join(', ')}`);
     }
-    console.log('  State: All 6 state files created');
+    console.log('  State: All 7 state files created');
     console.log('  Ready for: /build-plan');
   },
 
@@ -1191,7 +1353,16 @@ const Commands = {
     const description = args[1] || '';
     const sprint = loadState('sprint');
     const sprintId = sprint ? sprint.sprint_id : null;
-    const pat = PatternManager.addPattern(category, description, sprintId, 0.7);
+    const pat = PatternManager.addPattern({
+      category,
+      description,
+      source: 'sprint_review',
+      source_reference: sprintId,
+    });
+    if (pat.error) {
+      console.error(pat.error);
+      process.exit(1);
+    }
     console.log(`Pattern recorded: ${pat.id} — [${category}] ${description}`);
   },
 
