@@ -35,10 +35,15 @@ Also load: `state/sprint-state.json`, `state/task-state.json`, `state/learned-pa
    - Format: context, decision, consequences, status
    - Link to relevant governance principles
 
-5. **Update pattern registry**
-   - Add new patterns to learned-patterns.json
-   - Increment times_applied for reinforced patterns
-   - Adjust confidence scores based on outcomes
+5. **Update pattern registry (with inline approval)**
+   - For each extracted pattern, present to user:
+     - Category, description, why, confidence
+   - Ask user: **approve** / **reject** / **edit** for each
+   - Only approved patterns are saved via `PatternManager.addPattern()` with `source: "sprint_review"`, `trust: "medium"`, `ttl_days: 90`
+   - Rejected patterns are discarded
+   - Edited patterns: apply user modifications, then save
+   - Check for duplicates: if >80% semantic overlap with existing pattern, reinforce instead of creating new
+   - Increment `times_applied` for reinforced patterns via `PatternManager.reinforcePattern()`
 
 6. **Refresh context state**
    - Update active_summaries with new sprint summary
@@ -65,7 +70,7 @@ Also load: `state/sprint-state.json`, `state/task-state.json`, `state/learned-pa
 ```
 Learning Recorded
   Sprint: {sprint_id} — COMPLETED
-  Patterns Learned: {n} new, {n} reinforced
+  Patterns: {n} approved, {n} rejected, {n} reinforced
   ADRs Recorded: {n}
   Summary: compressed to {n} tokens
   Context Budget: {used}/{max}
