@@ -25,6 +25,7 @@ const STATE_FILES = {
   patterns: 'learned-patterns.json',
   staging: 'staging-patterns.json',
   ledger: 'execution-ledger.json',
+  scan: 'scan-state.json',
 };
 
 const GOVERNANCE_FILES = [
@@ -1008,6 +1009,23 @@ const StatusReporter = {
 // DAGBuilder — topological sort sprint tasks into parallelizable waves
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Security scanning constants
+// ---------------------------------------------------------------------------
+
+const SEVERITY_LEVELS = ['critical', 'high', 'medium', 'low'];
+
+const POSTURE_THRESHOLDS = {
+  strict:     { critical: 'block', high: 'block', medium: 'warn', low: 'log' },
+  moderate:   { critical: 'warn',  high: 'warn',  medium: 'log',  low: 'log' },
+  permissive: { critical: 'log',   high: 'log',   medium: 'log',  low: 'log' },
+};
+
+const SEMGREP_RULESETS = {
+  quick: ['p/owasp-top-ten', 'p/secrets'],
+  full:  ['p/owasp-top-ten', 'p/security-audit', 'p/secrets'],
+};
+
 const TIER3_KEYWORDS = ['migrate', 'auth', 'schema', 'security', 'perf', 'migration', 'performance'];
 const TIER2_KEYWORDS = ['integrate', 'connect', 'extend'];
 
@@ -1361,6 +1379,96 @@ const MergeValidator = {
 
     return { valid: true };
   },
+};
+
+// ---------------------------------------------------------------------------
+// SecurityScanner — SAST/SCA/DAST scanning with tool detection
+// ---------------------------------------------------------------------------
+
+const { execSync: _execSyncRaw } = require('child_process');
+
+const SecurityScanner = {
+  _scanPath() {
+    return stateFile('scan');
+  },
+
+  _loadScanState() {
+    return loadJSON(this._scanPath()) || {
+      tools: {},
+      posture_source: 'current-project.json',
+      sonarqube_source: 'current-project.json',
+      last_scan: null,
+      findings: [],
+      scan_history: [],
+    };
+  },
+
+  _saveScanState(state) {
+    saveJSON(this._scanPath(), state);
+  },
+
+  _getPosture() {
+    const project = loadState('project');
+    return (project?.security?.posture) || 'moderate';
+  },
+
+  _getSonarConfig() {
+    const project = loadState('project');
+    return project?.security || {};
+  },
+
+  _exec(cmd, opts) {
+    try {
+      return _execSyncRaw(cmd, { encoding: 'utf-8', timeout: opts?.timeout || 30000, stdio: ['pipe', 'pipe', 'pipe'], ...opts });
+    } catch (err) {
+      return null;
+    }
+  },
+
+  _execOrError(cmd, opts) {
+    try {
+      return { output: _execSyncRaw(cmd, { encoding: 'utf-8', timeout: opts?.timeout || 30000, stdio: ['pipe', 'pipe', 'pipe'], ...opts }), error: null };
+    } catch (err) {
+      return { output: null, error: err.message || 'unknown error' };
+    }
+  },
+
+  _genFindingId() {
+    return genId('F');
+  },
+
+  detectTools() {
+    const tools = {};
+    const semgrepVer = this._exec('semgrep --version');
+    tools.semgrep = { available: !!semgrepVer, version: semgrepVer?.trim() || null };
+
+    const sonarVer = this._exec('sonar-scanner --version 2>&1');
+    tools.sonar_scanner = {
+      available: !!sonarVer && sonarVer.includes('SonarScanner'),
+      version: sonarVer ? (sonarVer.match(/SonarScanner ([\d.]+)/)?.[1] || null) : null,
+    };
+
+    const dockerAvail = this._exec('docker ps', { timeout: 5000 });
+    const zapShAvail = this._exec('zap.sh -cmd -version 2>&1', { timeout: 10000 });
+    tools.zap = {
+      available: !!(dockerAvail || zapShAvail),
+      method: dockerAvail ? 'docker' : (zapShAvail ? 'zap.sh' : null),
+      version: null,
+    };
+
+    tools.npm_audit = { available: !!this._exec('npm --version'), version: null };
+    tools.yarn_audit = { available: !!this._exec('yarn --version'), version: null };
+    tools.pnpm_audit = { available: !!this._exec('pnpm --version'), version: null };
+    tools.pip_audit = { available: !!this._exec('pip-audit --version'), version: null };
+    tools.govulncheck = { available: !!this._exec('govulncheck -version 2>&1'), version: null };
+
+    const state = this._loadScanState();
+    state.tools = tools;
+    this._saveScanState(state);
+    return tools;
+  },
+
+  // --- Tasks 3-6 will add more methods here ---
 };
 
 // ---------------------------------------------------------------------------
