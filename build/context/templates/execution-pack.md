@@ -86,3 +86,34 @@ The execution phase, with this context loaded, should produce:
 - [ ] Verify coding rules exist for the task's language
 - [ ] Verify architecture.md covers the task's module
 - [ ] Confirm no blockers on the active task
+
+---
+
+## Parallel Mode Additions
+
+When assembling context for a Ralph Loop unit agent, the execution pack is modified:
+
+### Modified Token Budget
+
+| Layer | Sequential | Parallel | Change |
+|-------|-----------|----------|--------|
+| Sprint (filtered) | 800 | 500 | Only this unit's task, not full queue |
+| Module (deep) | 1500 | 1500 | Unchanged |
+| Rules | 1000 | 1000 | Unchanged |
+| Governance (minimal) | 500 | 500 | Unchanged |
+| Additional | 500 | 300 | Cross-module refs handled by ledger |
+| **Ledger** | **—** | **800** | **Cumulative decisions from prior waves** |
+| **Total** | **4300** | **4600** | +300 tokens |
+| **Hard ceiling** | **5500** | **5800** | +300 tokens |
+
+### Ledger Inclusion
+
+The cumulative ledger is loaded via `build-tools.cjs ledger read 800` and included as a "Context from Prior Waves" section in the agent prompt. The 800-token budget ensures old waves are compressed while recent waves retain full detail.
+
+### Tier-Specific Loading
+
+| Tier | Additional Context |
+|------|-------------------|
+| 1 | None — standard rules only |
+| 2 | Code reviewer agent guidance |
+| 3 | Specialist agent guidance matching task keywords (security-reviewer, architect, etc.) |
