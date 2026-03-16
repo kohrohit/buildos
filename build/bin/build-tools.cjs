@@ -1117,6 +1117,213 @@ const DAGBuilder = {
 };
 
 // ---------------------------------------------------------------------------
+// LedgerManager — execution ledger for wave-based parallel execution
+// ---------------------------------------------------------------------------
+
+const LedgerManager = {
+  _ledgerPath() {
+    return stateFile('ledger');
+  },
+
+  _wavePath(waveId) {
+    return path.join(WAVES_DIR, `wave-${waveId}.json`);
+  },
+
+  _snapshotPath(waveId, unitId) {
+    return path.join(WAVES_DIR, `wave-${waveId}-${unitId}-snapshot.json`);
+  },
+
+  init(sprintId) {
+    if (!fs.existsSync(WAVES_DIR)) {
+      fs.mkdirSync(WAVES_DIR, { recursive: true });
+    }
+    const ledger = {
+      sprint_id: sprintId,
+      mode: 'parallel',
+      current_wave: 0,
+      waves_completed: [],
+      decisions: [],
+      interfaces_defined: [],
+      warnings: [],
+      failed_units: [],
+    };
+    saveJSON(this._ledgerPath(), ledger);
+    return ledger;
+  },
+
+  load() {
+    return loadJSON(this._ledgerPath());
+  },
+
+  save(ledger) {
+    saveJSON(this._ledgerPath(), ledger);
+  },
+
+  appendDecision(wave, unitId, decision) {
+    const ledger = this.load();
+    if (!ledger) return;
+    ledger.decisions.push({
+      wave,
+      unit_id: unitId,
+      type: 'decision',
+      description: decision.description,
+      files_affected: decision.files_affected || [],
+      timestamp: now(),
+    });
+    this.save(ledger);
+  },
+
+  appendInterface(wave, unitId, iface) {
+    const ledger = this.load();
+    if (!ledger) return;
+    ledger.interfaces_defined.push({
+      wave,
+      unit_id: unitId,
+      name: iface.name,
+      file: iface.file,
+      exports: iface.exports || [],
+    });
+    this.save(ledger);
+  },
+
+  appendWarning(wave, unitId, warning) {
+    const ledger = this.load();
+    if (!ledger) return;
+    ledger.warnings.push({
+      wave,
+      unit_id: unitId,
+      description: warning,
+      timestamp: now(),
+    });
+    this.save(ledger);
+  },
+
+  appendFailure(unitId, wave, reason, downstream) {
+    const ledger = this.load();
+    if (!ledger) return;
+    const snapshotPath = this._snapshotPath(wave, unitId);
+    ledger.failed_units.push({
+      unit_id: unitId,
+      wave,
+      reason,
+      snapshot_path: snapshotPath,
+      downstream_blocked: downstream || [],
+    });
+    this.save(ledger);
+    return snapshotPath;
+  },
+
+  snapshotWave(waveId, results) {
+    const wavePath = this._wavePath(waveId);
+    saveJSON(wavePath, {
+      wave_id: waveId,
+      completed_at: now(),
+      results,
+    });
+    const ledger = this.load();
+    if (ledger) {
+      ledger.waves_completed.push(waveId);
+      ledger.current_wave = waveId;
+      this.save(ledger);
+    }
+  },
+
+  snapshotFailure(waveId, unitId, failureData) {
+    const snapshotPath = this._snapshotPath(waveId, unitId);
+    saveJSON(snapshotPath, {
+      unit_id: unitId,
+      wave: waveId,
+      failure_reason: failureData.failure_reason || 'unknown',
+      partial_work: failureData.partial_work || {},
+      worktree_preserved: true,
+      downstream_blocked: failureData.downstream_blocked || [],
+      retry_hint: failureData.retry_hint || null,
+      snapshot_at: now(),
+    });
+    return snapshotPath;
+  },
+
+  getCumulativeLedger(tokenBudget) {
+    tokenBudget = tokenBudget || 800;
+    const ledger = this.load();
+    if (!ledger) return { decisions: [], interfaces_defined: [], warnings: [] };
+
+    const cutoff = Math.max(0, ledger.current_wave - 2);
+
+    const recentDecisions = [];
+    const oldSummaries = [];
+
+    for (const d of ledger.decisions) {
+      if (d.wave <= cutoff) {
+        oldSummaries.push(`Wave ${d.wave}/${d.unit_id}: ${d.description}`);
+      } else {
+        recentDecisions.push(d);
+      }
+    }
+
+    const result = {
+      current_wave: ledger.current_wave,
+      prior_wave_summaries: oldSummaries,
+      recent_decisions: recentDecisions,
+      interfaces_defined: ledger.interfaces_defined,
+      warnings: ledger.warnings,
+      failed_units: ledger.failed_units,
+    };
+
+    const estimate = TokenCounter.estimate(JSON.stringify(result));
+    if (estimate > tokenBudget) {
+      result.prior_wave_summaries = oldSummaries.slice(-3);
+      result.warnings = ledger.warnings.slice(-5);
+    }
+
+    return result;
+  },
+
+  finalize() {
+    const ledger = this.load();
+    if (!ledger) return 'No ledger found.';
+
+    const totalWaves = ledger.waves_completed.length;
+    const totalDecisions = ledger.decisions.length;
+    const totalFailed = ledger.failed_units.length;
+    const totalInterfaces = ledger.interfaces_defined.length;
+
+    const lines = [
+      'Ralph Loop Execution Complete',
+      `  Sprint: ${ledger.sprint_id}`,
+      `  Waves completed: ${totalWaves}`,
+      `  Decisions recorded: ${totalDecisions}`,
+      `  Interfaces defined: ${totalInterfaces}`,
+      `  Failed units: ${totalFailed}`,
+    ];
+
+    if (totalFailed > 0) {
+      lines.push('  Failed:');
+      for (const f of ledger.failed_units) {
+        lines.push(`    - ${f.unit_id} (wave ${f.wave}): ${f.reason}`);
+        if (f.downstream_blocked.length > 0) {
+          lines.push(`      Blocked: ${f.downstream_blocked.join(', ')}`);
+        }
+      }
+    }
+
+    return lines.join('\n');
+  },
+
+  cleanup() {
+    const ledgerPath = this._ledgerPath();
+    if (fs.existsSync(ledgerPath)) fs.unlinkSync(ledgerPath);
+    if (fs.existsSync(WAVES_DIR)) {
+      const files = fs.readdirSync(WAVES_DIR);
+      for (const f of files) {
+        fs.unlinkSync(path.join(WAVES_DIR, f));
+      }
+      fs.rmdirSync(WAVES_DIR);
+    }
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 10. Hook helpers
 // ---------------------------------------------------------------------------
 
