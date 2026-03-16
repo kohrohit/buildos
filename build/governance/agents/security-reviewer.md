@@ -141,3 +141,24 @@ The security-reviewer agent acts as a dedicated security specialist that evaluat
 - [ ] Error messages do not leak internal details
 - [ ] Logging excludes sensitive data (passwords, tokens, PII)
 - [ ] HTTPS is enforced for all external communication
+
+---
+
+## Scan Findings Integration
+
+When automated security scan results are available (from `/build-review` or `/build-scan`), the security reviewer receives structured findings alongside the code.
+
+### How to Use Scan Data
+
+1. **Cross-reference**: Compare automated findings against your manual code review. Automated tools catch pattern-based vulnerabilities but miss logic flaws.
+2. **Validate**: Assess whether each automated finding is a true positive or false positive. Report your assessment.
+3. **Supplement**: Identify vulnerabilities the scanners missed — business logic flaws, authorization bypasses, race conditions, and other issues that require understanding intent.
+4. **Prioritize**: Focus manual review on areas the scanners flagged — these are higher-risk code paths.
+
+### Scan Data Format
+
+```
+[SEVERITY] file:line — message (tool)
+```
+
+Tools: `semgrep` (SAST), `sonar_scanner` (SAST), `npm_audit`/`yarn_audit`/`pnpm_audit` (dependency), `pip_audit` (dependency), `govulncheck` (dependency), `zap` (DAST).

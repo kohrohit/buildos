@@ -91,3 +91,13 @@ The review phase, with this context loaded, should produce:
 - [ ] Verify test suite has been run and results are available
 - [ ] Verify modified modules are identifiable from git or sprint state
 - [ ] Verify NFRs document exists for compliance checking
+
+### Scan Findings Inclusion
+
+When scan results are available, include a summary in the review context:
+
+| Source | Budget |
+|--------|--------|
+| Scan findings summary | 500 tokens |
+
+Load via `build-tools.cjs scan report`. Include the top 10 findings by severity. If findings exceed 500 tokens, include only CRITICAL and HIGH severity.
