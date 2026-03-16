@@ -1026,6 +1026,33 @@ const SEMGREP_RULESETS = {
   full:  ['p/owasp-top-ten', 'p/security-audit', 'p/secrets'],
 };
 
+// ---------------------------------------------------------------------------
+// Document ingestion constants
+// ---------------------------------------------------------------------------
+
+const SUPPORTED_DOC_TYPES = {
+  '.pdf':       'pdf',
+  '.docx':      'docx',
+  '.pptx':      'pptx',
+  '.yaml':      'yaml',
+  '.yml':       'yaml',
+  '.json':      'json',
+  '.puml':      'plantuml',
+  '.plantuml':  'plantuml',
+  '.mmd':       'mermaid',
+  '.mermaid':   'mermaid',
+  '.md':        'markdown',
+  '.txt':       'text',
+  '.rst':       'text',
+  '.png':       'image',
+  '.jpg':       'image',
+  '.jpeg':      'image',
+  '.svg':       'image',
+  '.figma-url': 'figma',
+};
+
+const BRAIN_SOURCES_DIR = path.join(GOV_DIR, 'brain', 'sources');
+
 const TIER3_KEYWORDS = ['migrate', 'auth', 'schema', 'security', 'perf', 'migration', 'performance'];
 const TIER2_KEYWORDS = ['integrate', 'connect', 'extend'];
 
