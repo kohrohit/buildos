@@ -98,3 +98,14 @@ Verification Complete
   Required Fixes: {list or "none"}
   Next: /build-review (deep review) or /build-learn (record patterns)
 ```
+
+### DAST Scanning (optional)
+
+When `/build-verify --dast <url>` is provided:
+
+1. Verify ZAP is available: `build-tools.cjs scan detect`
+2. Run DAST: `build-tools.cjs scan runtime <url>`
+3. Include DAST findings in the verification report
+4. If posture=strict and HIGH/CRITICAL DAST findings → verification fails
+
+This is opt-in. Most sprints skip DAST. Only use when the sprint produces a running service.
