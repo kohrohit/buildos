@@ -14,6 +14,7 @@ const ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
 const STATE_DIR = path.join(ROOT, 'state');
 const GOV_DIR = path.join(ROOT, 'governance');
 const CONTEXT_DIR = path.join(ROOT, 'context');
+const WAVES_DIR = path.join(STATE_DIR, 'waves');
 
 const STATE_FILES = {
   project: 'current-project.json',
@@ -23,6 +24,7 @@ const STATE_FILES = {
   context: 'context-state.json',
   patterns: 'learned-patterns.json',
   staging: 'staging-patterns.json',
+  ledger: 'execution-ledger.json',
 };
 
 const GOVERNANCE_FILES = [
@@ -1003,6 +1005,118 @@ const StatusReporter = {
 };
 
 // ---------------------------------------------------------------------------
+// DAGBuilder — topological sort sprint tasks into parallelizable waves
+// ---------------------------------------------------------------------------
+
+const TIER3_KEYWORDS = ['migrate', 'auth', 'schema', 'security', 'perf', 'migration', 'performance'];
+const TIER2_KEYWORDS = ['integrate', 'connect', 'extend'];
+
+const DAGBuilder = {
+  build(tasks) {
+    const pending = tasks.filter(t => t.status === 'pending');
+    if (pending.length === 0) {
+      return { error: 'No pending tasks to execute.' };
+    }
+
+    const taskMap = new Map(pending.map(t => [t.id, t]));
+    const inDegree = new Map();
+    const adjList = new Map();
+
+    for (const t of pending) {
+      inDegree.set(t.id, 0);
+      adjList.set(t.id, []);
+    }
+
+    for (const t of pending) {
+      for (const dep of (t.depends_on || [])) {
+        if (!taskMap.has(dep)) continue;
+        adjList.get(dep).push(t.id);
+        inDegree.set(t.id, inDegree.get(t.id) + 1);
+      }
+    }
+
+    const queue = [];
+    const depth = new Map();
+    for (const [id, deg] of inDegree) {
+      if (deg === 0) {
+        queue.push(id);
+        depth.set(id, 0);
+      }
+    }
+
+    const sorted = [];
+    let processed = 0;
+    while (queue.length > 0) {
+      const current = queue.shift();
+      sorted.push(current);
+      processed++;
+
+      for (const neighbor of adjList.get(current)) {
+        const newDeg = inDegree.get(neighbor) - 1;
+        inDegree.set(neighbor, newDeg);
+        const newDepth = Math.max(depth.get(neighbor) || 0, depth.get(current) + 1);
+        depth.set(neighbor, newDepth);
+        if (newDeg === 0) {
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    if (processed !== pending.length) {
+      const inCycle = pending.filter(t => !sorted.includes(t.id)).map(t => t.id);
+      return { error: `Cycle detected in task dependencies: ${inCycle.join(' → ')}. Fix task dependencies before running --parallel.` };
+    }
+
+    const waveMap = new Map();
+    for (const [id, d] of depth) {
+      if (!waveMap.has(d)) waveMap.set(d, []);
+      waveMap.get(d).push(id);
+    }
+
+    const waves = [];
+    const sortedDepths = [...waveMap.keys()].sort((a, b) => a - b);
+    for (let i = 0; i < sortedDepths.length; i++) {
+      waves.push({
+        id: i + 1,
+        units: waveMap.get(sortedDepths[i]).sort(),
+      });
+    }
+
+    const maxConcurrency = Math.max(...waves.map(w => w.units.length));
+    const parallelizable = maxConcurrency > 1;
+
+    return { waves, parallelizable, max_concurrency: maxConcurrency };
+  },
+
+  tier(tasks) {
+    const result = {};
+    for (const t of tasks) {
+      const desc = (t.description || '').toLowerCase() + ' ' + (t.title || '').toLowerCase();
+      const fileCount = (t.file_scope || []).length;
+
+      const hasTier3Keyword = TIER3_KEYWORDS.some(kw => desc.includes(kw));
+      if (hasTier3Keyword || fileCount >= 7) {
+        result[t.id] = { tier: 3, model: 'opus', reason: hasTier3Keyword ? 'keyword match' : 'file count >= 7' };
+        continue;
+      }
+
+      const hasTier2Keyword = TIER2_KEYWORDS.some(kw => desc.includes(kw));
+      if (hasTier2Keyword || fileCount >= 3) {
+        result[t.id] = { tier: 2, model: 'sonnet', reason: hasTier2Keyword ? 'keyword match' : 'file count 3-6' };
+        continue;
+      }
+
+      result[t.id] = { tier: 1, model: 'sonnet', reason: 'isolated change' };
+    }
+    return result;
+  },
+
+  recalculate(tasks) {
+    return this.build(tasks);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 10. Hook helpers
 // ---------------------------------------------------------------------------
 
@@ -1512,6 +1626,7 @@ const Commands = {
       }
     }
   },
+
 };
 
 // ---------------------------------------------------------------------------
