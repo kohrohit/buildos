@@ -158,3 +158,36 @@ Determine whether the sprint is complete or more tasks remain.
 - **Context Rotation**: Context is cleared and reloaded between tasks to prevent drift.
 - **Context Output**: Updated sprint state and task records for verification workflow.
 - **Context Discipline**: Never load the full codebase; prefer targeted file loading.
+
+---
+
+## Parallel Execution Variant (Ralph Loop)
+
+When `/build-execute --parallel` is used, the sequential workflow above is replaced by wave-based parallel execution. The key differences:
+
+### What Changes
+
+| Aspect | Sequential | Parallel |
+|--------|-----------|----------|
+| Task selection | Pick next pending by dependency order | DAGBuilder groups all tasks into waves |
+| Execution | One task at a time, single context | Multiple tasks per wave, each in isolated worktree |
+| Context | Reloaded per task from shared state | Per-unit execution pack + cumulative ledger |
+| State updates | Executor writes to sprint-state.json directly | Orchestrator updates state after wave completion |
+| Failure handling | Mark blocked, attempt next task | Evict failed unit, snapshot, recalculate DAG, continue |
+
+### What Stays the Same
+
+- Governance rules are loaded and obeyed identically
+- Pre-commit hooks run in each worktree
+- Task acceptance criteria must be met
+- Coding standards enforced per governance rules
+- Sprint completion triggers verification-ready transition
+
+### Context Rotation
+
+In sequential mode, context is cleared between tasks. In parallel mode:
+- **Within a wave:** each agent has independent, isolated context (worktree)
+- **Between waves:** orchestrator merges code and updates execution ledger
+- **Ledger carries forward:** decisions, interfaces, and warnings from prior waves are included in the next wave's context pack
+
+See `/build-execute` command definition for the full parallel mode protocol.
