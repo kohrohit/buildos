@@ -1324,6 +1324,46 @@ const LedgerManager = {
 };
 
 // ---------------------------------------------------------------------------
+// MergeValidator — check for file conflicts between parallel units
+// ---------------------------------------------------------------------------
+
+const MergeValidator = {
+  validate(unitReports) {
+    const fileOwnership = new Map();
+
+    for (const report of unitReports) {
+      const allFiles = [
+        ...(report.files_modified || []),
+        ...(report.files_created || []),
+      ];
+      for (const file of allFiles) {
+        if (!fileOwnership.has(file)) fileOwnership.set(file, []);
+        fileOwnership.get(file).push(report.unit_id);
+      }
+    }
+
+    const conflicts = [];
+    for (const [file, units] of fileOwnership) {
+      if (units.length > 1) {
+        conflicts.push({ file, units });
+      }
+    }
+
+    if (conflicts.length > 0) {
+      return {
+        valid: false,
+        conflicts,
+        message: conflicts.map(c =>
+          `✗ Units ${c.units.join(' and ')} both touched ${c.file}\n  Fix: Add dependency between tasks ${c.units.join(' → ')} (or reverse)`
+        ).join('\n'),
+      };
+    }
+
+    return { valid: true };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 10. Hook helpers
 // ---------------------------------------------------------------------------
 
