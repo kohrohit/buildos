@@ -1578,7 +1578,88 @@ const SecurityScanner = {
     return this._deduplicateFindings(combined);
   },
 
-  // --- Tasks 4-6 will add more methods here ---
+  _mapSonarSeverity(severity) {
+    const map = { BLOCKER: 'critical', CRITICAL: 'high', MAJOR: 'medium', MINOR: 'low', INFO: 'low' };
+    return map[severity] || 'low';
+  },
+
+  _pollSonarTask(serverUrl, projectKey, token, maxWaitMs) {
+    const maxWait = maxWaitMs || 300000;
+    let interval = 3000;
+    const maxInterval = 10000;
+    let elapsed = 0;
+    while (elapsed < maxWait) {
+      const cmd = token
+        ? `curl -s -u "${token}:" "${serverUrl}/api/ce/component?component=${projectKey}"`
+        : `curl -s "${serverUrl}/api/ce/component?component=${projectKey}"`;
+      const result = this._exec(cmd, { timeout: 15000 });
+      if (result) {
+        try {
+          const data = JSON.parse(result);
+          const task = data.current;
+          if (task && (task.status === 'SUCCESS' || task.status === 'FAILED')) {
+            return task.status;
+          }
+        } catch {}
+      }
+      _execSyncRaw(`sleep ${interval / 1000}`);
+      elapsed += interval;
+      interval = Math.min(interval + 1000, maxInterval);
+    }
+    return 'TIMEOUT';
+  },
+
+  runSonarQube() {
+    const state = this._loadScanState();
+    if (!state.tools?.sonar_scanner?.available) {
+      return { findings: [], error: 'sonar-scanner not installed', skipped: true };
+    }
+    const config = this._getSonarConfig();
+    if (!config.sonarqube_url || !config.sonarqube_project_key) {
+      return { findings: [], error: 'SonarQube not configured. Run: scan sonarqube <url> <project-key>', skipped: true };
+    }
+    const token = process.env[config.sonarqube_token_env || 'SONAR_TOKEN'] || '';
+    const tokenFlag = token ? `-Dsonar.token=${token}` : '';
+    const scanCmd = `sonar-scanner -Dsonar.projectKey=${config.sonarqube_project_key} -Dsonar.host.url=${config.sonarqube_url} ${tokenFlag}`;
+    const scanResult = this._execOrError(scanCmd, { timeout: 300000 });
+    if (scanResult.error && !scanResult.output) {
+      return { findings: [], error: `sonar-scanner failed: ${scanResult.error}`, skipped: false };
+    }
+    const taskStatus = this._pollSonarTask(config.sonarqube_url, config.sonarqube_project_key, token);
+    if (taskStatus !== 'SUCCESS') {
+      return { findings: [], error: `SonarQube analysis ${taskStatus}`, skipped: false };
+    }
+    const authFlag = token ? `-u "${token}:"` : '';
+    const issuesCmd = `curl -s ${authFlag} "${config.sonarqube_url}/api/issues/search?componentKeys=${config.sonarqube_project_key}&severities=BLOCKER,CRITICAL,MAJOR&types=VULNERABILITY,BUG&ps=500"`;
+    const issuesResult = this._exec(issuesCmd, { timeout: 30000 });
+    if (!issuesResult) {
+      return { findings: [], error: 'Failed to fetch SonarQube issues', skipped: false };
+    }
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    try {
+      const data = JSON.parse(issuesResult);
+      const findings = (data.issues || []).map(issue => ({
+        id: this._genFindingId(),
+        tool: 'sonar_scanner',
+        rule: issue.rule || 'unknown',
+        severity: this._mapSonarSeverity(issue.severity),
+        file: (issue.component || '').replace(`${config.sonarqube_project_key}:`, ''),
+        line: issue.line || 0,
+        message: issue.message || '',
+        cwe: issue.tags?.find(t => t.startsWith('cwe-'))?.replace('cwe-', 'CWE-') || null,
+        owasp: issue.tags?.find(t => t.startsWith('owasp-')) || null,
+        status: 'open',
+        found_at: now(),
+        sprint_id: sprintId,
+      }));
+      return { findings, error: null, skipped: false };
+    } catch {
+      return { findings: [], error: 'Failed to parse SonarQube response', skipped: false };
+    }
+  },
+
+  // --- Tasks 5-6 will add more methods here ---
 };
 
 // ---------------------------------------------------------------------------
