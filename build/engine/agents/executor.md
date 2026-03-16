@@ -83,3 +83,31 @@ The executor has no memory between tasks. Each task invocation loads fresh conte
 - The executor must favor simplicity; do not over-engineer beyond the task requirements.
 - Error handling must be explicit; silent failures are not acceptable.
 - Every public function or method must have documentation.
+
+---
+
+## Parallel Mode Constraints
+
+When the executor agent is dispatched as part of a Ralph Loop wave (via `Agent` with `isolation: "worktree"`), the following additional constraints apply:
+
+### State Isolation
+
+- The executor **MUST NOT** write to `sprint-state.json` or `task-state.json`. In parallel mode, multiple executors run concurrently — shared state writes would cause race conditions. All state updates are handled by the orchestrator after wave completion.
+- The executor **MUST NOT** modify files outside its task's declared `file_scope`. The MergeValidator will hard-fail the wave if two units touch the same file.
+
+### Output Contract
+
+- The executor **MUST** write `unit-report.json` to the worktree root before completing. This file is the executor's only communication channel back to the orchestrator.
+- If the executor encounters a blocker and cannot complete the task, it must still write `unit-report.json` with `status: "blocked"` or `status: "failed"` and populate `failure_reason`.
+
+### Ledger Awareness
+
+- The executor receives a cumulative execution ledger containing decisions and interfaces from prior waves.
+- The executor should **read** the ledger to understand what prior waves produced (e.g., interface shapes, architectural decisions).
+- The executor should **report** its own decisions and interfaces in unit-report.json so the orchestrator can append them to the ledger for subsequent waves.
+
+### Tier-Specific Behavior
+
+- **Tier 1** (Sonnet): Standard execution. No specialist guidance.
+- **Tier 2** (Sonnet): Standard execution. Code reviewer guidance included.
+- **Tier 3** (Opus): Specialist guidance included (security-reviewer for auth tasks, architect for schema changes, etc.).
