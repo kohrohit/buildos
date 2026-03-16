@@ -1468,7 +1468,117 @@ const SecurityScanner = {
     return tools;
   },
 
-  // --- Tasks 3-6 will add more methods here ---
+  _mapSemgrepSeverity(result) {
+    const severity = (result.extra?.severity || '').toUpperCase();
+    const impact = (result.extra?.metadata?.impact || '').toUpperCase();
+    if (severity === 'ERROR') return 'critical';
+    if (severity === 'WARNING' && impact === 'HIGH') return 'high';
+    if (severity === 'WARNING') return 'medium';
+    return 'low';
+  },
+
+  _parseSemgrepOutput(jsonStr, sprintId) {
+    try {
+      const data = JSON.parse(jsonStr);
+      const results = data.results || [];
+      return results.map(r => ({
+        id: this._genFindingId(),
+        tool: 'semgrep',
+        rule: r.check_id || 'unknown',
+        severity: this._mapSemgrepSeverity(r),
+        file: r.path,
+        line: r.start?.line || 0,
+        message: r.extra?.message || '',
+        cwe: r.extra?.metadata?.cwe?.[0] || null,
+        owasp: r.extra?.metadata?.owasp?.[0] || null,
+        status: 'open',
+        found_at: now(),
+        sprint_id: sprintId || null,
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  runSemgrep(target, rulesets, timeout) {
+    const state = this._loadScanState();
+    if (!state.tools?.semgrep?.available) {
+      return { findings: [], error: 'semgrep not installed', skipped: true };
+    }
+    const configFlags = rulesets.map(r => `--config ${r}`).join(' ');
+    const cmd = `semgrep ${configFlags} --json --quiet ${target}`;
+    const result = this._execOrError(cmd, { timeout: timeout || 120000 });
+    if (result.error && !result.output) {
+      return { findings: [], error: `semgrep failed: ${result.error}`, skipped: false };
+    }
+    const output = result.output || result.error;
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const findings = this._parseSemgrepOutput(output, sprintId);
+    return { findings, error: null, skipped: false };
+  },
+
+  scanFiles(files) {
+    if (!files || files.length === 0) return { findings: [], summary: { critical: 0, high: 0, medium: 0, low: 0 } };
+    const target = files.join(' ');
+    const result = this.runSemgrep(target, SEMGREP_RULESETS.quick, 30000);
+    const summary = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of result.findings) { summary[f.severity]++; }
+    const posture = this._getPosture();
+    const thresholds = POSTURE_THRESHOLDS[posture] || POSTURE_THRESHOLDS.moderate;
+    let blocked = false;
+    for (const sev of SEVERITY_LEVELS) {
+      if (summary[sev] > 0 && thresholds[sev] === 'block') { blocked = true; break; }
+    }
+    const state = this._loadScanState();
+    state.findings = this._mergeFindings(state.findings, result.findings);
+    state.last_scan = {
+      type: 'files', timestamp: now(),
+      tools_used: result.skipped ? [] : ['semgrep'],
+      tools_errored: result.error ? ['semgrep'] : [],
+      summary,
+    };
+    state.scan_history.push({
+      timestamp: now(), type: 'files', files_scanned: files.length,
+      findings_count: result.findings.length, tools_used: result.skipped ? [] : ['semgrep'],
+    });
+    if (state.scan_history.length > 50) { state.scan_history = state.scan_history.slice(-50); }
+    this._saveScanState(state);
+    return { findings: result.findings, summary, blocked, posture, error: result.error };
+  },
+
+  _deduplicateFindings(findings) {
+    const seen = new Map();
+    const deduped = [];
+    for (const f of findings) {
+      if (f.cwe) {
+        const key = `${f.file}:${f.line}:${f.cwe}`;
+        if (seen.has(key)) {
+          const existing = seen.get(key);
+          if (f.tool === 'sonar_scanner' && existing.tool === 'semgrep') {
+            deduped[deduped.indexOf(existing)] = f;
+            seen.set(key, f);
+          }
+          continue;
+        }
+        seen.set(key, f);
+      }
+      deduped.push(f);
+    }
+    return deduped;
+  },
+
+  _mergeFindings(existing, newFindings) {
+    const preserved = existing.filter(f => f.status === 'dismissed' || f.status === 'false_positive');
+    const newKeys = new Set(newFindings.map(f => `${f.file}:${f.line}:${f.rule}`));
+    const autoResolved = existing
+      .filter(f => f.status === 'open' && !newKeys.has(`${f.file}:${f.line}:${f.rule}`))
+      .map(f => ({ ...f, status: 'resolved', resolved_at: now() }));
+    const combined = [...preserved, ...autoResolved, ...newFindings];
+    return this._deduplicateFindings(combined);
+  },
+
+  // --- Tasks 4-6 will add more methods here ---
 };
 
 // ---------------------------------------------------------------------------
