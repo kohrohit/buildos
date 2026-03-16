@@ -1848,7 +1848,124 @@ const SecurityScanner = {
     return { findings: zapResult.findings, summary, blocked, posture, error: zapResult.error };
   },
 
-  // --- Task 6 will add more methods here ---
+  scanProject(opts) {
+    opts = opts || {};
+    const toolsUsed = [];
+    const toolsErrored = [];
+    let allFindings = [];
+
+    if (!opts.sonarOnly) {
+      const semgrepResult = this.runSemgrep('.', SEMGREP_RULESETS.full, 120000);
+      if (!semgrepResult.skipped) toolsUsed.push('semgrep');
+      if (semgrepResult.error && !semgrepResult.skipped) toolsErrored.push('semgrep');
+      allFindings = allFindings.concat(semgrepResult.findings);
+    }
+
+    if (!opts.semgrepOnly) {
+      const sonarResult = this.runSonarQube();
+      if (!sonarResult.skipped) toolsUsed.push('sonar_scanner');
+      if (sonarResult.error && !sonarResult.skipped) toolsErrored.push('sonar_scanner');
+      allFindings = allFindings.concat(sonarResult.findings);
+    }
+
+    if (!opts.sonarOnly && !opts.semgrepOnly) {
+      const depResult = this.runDependencyAudit();
+      toolsUsed.push(...depResult.toolsUsed);
+      toolsErrored.push(...depResult.toolsErrored);
+      allFindings = allFindings.concat(depResult.findings);
+    }
+
+    allFindings = this._deduplicateFindings(allFindings);
+    const summary = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of allFindings) { if (f.status === 'open') summary[f.severity]++; }
+
+    const posture = this._getPosture();
+    const thresholds = POSTURE_THRESHOLDS[posture] || POSTURE_THRESHOLDS.moderate;
+    let blocked = false;
+    for (const sev of SEVERITY_LEVELS) {
+      if (summary[sev] > 0 && thresholds[sev] === 'block') { blocked = true; break; }
+    }
+
+    const state = this._loadScanState();
+    state.findings = this._mergeFindings(state.findings, allFindings);
+    state.last_scan = { type: 'project', timestamp: now(), tools_used: toolsUsed, tools_errored: toolsErrored, summary };
+    state.scan_history.push({
+      timestamp: now(), type: 'project', files_scanned: null,
+      findings_count: allFindings.length, tools_used: toolsUsed,
+    });
+    if (state.scan_history.length > 50) { state.scan_history = state.scan_history.slice(-50); }
+    this._saveScanState(state);
+    return { findings: allFindings, summary, blocked, posture, toolsUsed, toolsErrored };
+  },
+
+  getReport() {
+    const state = this._loadScanState();
+    if (!state.last_scan) return 'No scans have been run yet. Run: scan detect, then scan project';
+    const s = state.last_scan;
+    const posture = this._getPosture();
+    const openFindings = state.findings.filter(f => f.status === 'open');
+    const lines = [
+      'Security Scan Report',
+      `  Posture: ${posture}`,
+      `  Last scan: ${s.type} at ${s.timestamp}`,
+      `  Tools used: ${s.tools_used.join(', ') || 'none'}`,
+    ];
+    if (s.tools_errored?.length > 0) {
+      lines.push(`  Tools errored: ${s.tools_errored.join(', ')}`);
+    }
+    lines.push('');
+    lines.push(`  Findings (open): ${openFindings.length}`);
+    lines.push(`    Critical: ${s.summary.critical}`);
+    lines.push(`    High: ${s.summary.high}`);
+    lines.push(`    Medium: ${s.summary.medium}`);
+    lines.push(`    Low: ${s.summary.low}`);
+    if (openFindings.length > 0) {
+      lines.push('');
+      lines.push('  Top findings:');
+      const top = openFindings
+        .sort((a, b) => SEVERITY_LEVELS.indexOf(a.severity) - SEVERITY_LEVELS.indexOf(b.severity))
+        .slice(0, 10);
+      for (const f of top) {
+        lines.push(`    [${f.severity.toUpperCase()}] ${f.file}:${f.line} — ${f.message} (${f.tool})`);
+      }
+      if (openFindings.length > 10) {
+        lines.push(`    ... and ${openFindings.length - 10} more`);
+      }
+    }
+    return lines.join('\n');
+  },
+
+  dismiss(findingId, reason, isFalsePositive) {
+    const state = this._loadScanState();
+    const finding = state.findings.find(f => f.id === findingId);
+    if (!finding) return { error: `Finding ${findingId} not found` };
+    finding.status = isFalsePositive ? 'false_positive' : 'dismissed';
+    finding.dismissed_reason = reason;
+    finding.dismissed_at = now();
+    this._saveScanState(state);
+    return { success: true, finding };
+  },
+
+  configure(posture) {
+    if (!POSTURE_THRESHOLDS[posture]) {
+      return { error: `Invalid posture: ${posture}. Use: strict, moderate, permissive` };
+    }
+    const project = loadState('project') || {};
+    if (!project.security) project.security = {};
+    project.security.posture = posture;
+    saveState('project', project);
+    return { success: true, posture };
+  },
+
+  configureSonarQube(serverUrl, projectKey) {
+    const project = loadState('project') || {};
+    if (!project.security) project.security = {};
+    project.security.sonarqube_url = serverUrl;
+    project.security.sonarqube_project_key = projectKey;
+    project.security.sonarqube_token_env = project.security.sonarqube_token_env || 'SONAR_TOKEN';
+    saveState('project', project);
+    return { success: true, serverUrl, projectKey };
+  },
 };
 
 // ---------------------------------------------------------------------------
