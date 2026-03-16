@@ -1627,6 +1627,28 @@ const Commands = {
     }
   },
 
+  dag(args) {
+    const sub = args[0];
+    if (!sub || !['build', 'tier', 'recalculate'].includes(sub)) {
+      console.error('Usage: dag <build|tier|recalculate>');
+      process.exit(1);
+    }
+
+    const taskState = loadState('task');
+    if (!taskState || !taskState.tasks || taskState.tasks.length === 0) {
+      console.error('No tasks found in task-state.json');
+      process.exit(1);
+    }
+
+    if (sub === 'build' || sub === 'recalculate') {
+      const result = DAGBuilder.build(taskState.tasks);
+      console.log(JSON.stringify(result, null, 2));
+    } else if (sub === 'tier') {
+      const pending = taskState.tasks.filter(t => t.status === 'pending');
+      const result = DAGBuilder.tier(pending);
+      console.log(JSON.stringify(result, null, 2));
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1679,6 +1701,7 @@ function main() {
     console.log('  audit [staged|expiring]      Review and manage learned patterns');
     console.log('  remember <desc> <why>        Save explicit teaching pattern');
     console.log('  validate [target]            Validate state files');
+    console.log('  dag <build|tier|recalculate> DAG operations for parallel execution');
     console.log('  hook <hook-name>             Run hook handler');
     process.exit(0);
   }
