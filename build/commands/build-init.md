@@ -41,6 +41,31 @@ Load: `governance/core-policies.md`, `governance/coding-rules.md`, `governance/a
 
 6. **Generate initialization report**
 
+### Security Configuration
+
+After initializing the project brain, configure security scanning:
+
+1. **Set security posture** — ask the user:
+   ```
+   Security Posture:
+     What security enforcement level for this project?
+
+     1. strict     — HIGH/CRITICAL block tasks, MEDIUM warns
+     2. moderate   — HIGH/CRITICAL warn, rest logged (default)
+     3. permissive — everything logged, nothing blocks
+   ```
+   Call `build-tools.cjs scan configure <posture>` with the user's choice (default: moderate).
+
+2. **SonarQube setup** (optional) — ask:
+   ```
+   SonarQube server URL? (press Enter to skip)
+   SonarQube project key? (press Enter to skip)
+   ```
+   If provided, call `build-tools.cjs scan sonarqube <url> <key>`.
+
+3. **Detect tools** — call `build-tools.cjs scan detect` and show results.
+   Suggest installing missing tools if needed.
+
 ## Governance Checks
 - Verify all governance files are present and non-empty
 - Record governance file checksums for drift detection
