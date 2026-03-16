@@ -1896,6 +1896,114 @@ const Commands = {
       console.log(JSON.stringify(result, null, 2));
     }
   },
+
+  ledger(args) {
+    const sub = args[0];
+    if (!sub || !['init', 'read', 'update', 'finalize', 'cleanup'].includes(sub)) {
+      console.error('Usage: ledger <init|read|update|finalize|cleanup>');
+      process.exit(1);
+    }
+
+    if (sub === 'init') {
+      const sprint = loadState('sprint');
+      const sprintId = sprint?.active_sprint?.id || 'unknown';
+      LedgerManager.init(sprintId);
+      console.log(`Ledger initialized for sprint ${sprintId}`);
+    } else if (sub === 'read') {
+      const budget = parseInt(args[1]) || 800;
+      const result = LedgerManager.getCumulativeLedger(budget);
+      console.log(JSON.stringify(result, null, 2));
+    } else if (sub === 'update') {
+      const waveId = parseInt(args[1]);
+      if (!waveId) {
+        console.error('Usage: ledger update <wave-number> [results-json-path]');
+        process.exit(1);
+      }
+      let results = [];
+      if (args[2]) {
+        try {
+          if (fs.existsSync(args[2])) {
+            results = JSON.parse(fs.readFileSync(args[2], 'utf-8'));
+          } else {
+            results = JSON.parse(args[2]);
+          }
+        } catch {
+          console.error('Could not parse wave results. Expected JSON array of unit-report objects.');
+          process.exit(1);
+        }
+      }
+
+      const ledger = LedgerManager.load();
+      if (ledger && Array.isArray(results)) {
+        for (const report of results) {
+          if (report.status === 'completed') {
+            for (const d of (report.decisions || [])) {
+              LedgerManager.appendDecision(waveId, report.unit_id, d);
+            }
+            for (const i of (report.interfaces_defined || [])) {
+              LedgerManager.appendInterface(waveId, report.unit_id, i);
+            }
+            for (const w of (report.warnings || [])) {
+              LedgerManager.appendWarning(waveId, report.unit_id, w);
+            }
+          }
+        }
+      }
+
+      LedgerManager.snapshotWave(waveId, results);
+      console.log(`Wave ${waveId} snapshot saved. Ledger updated with ${results.length} unit reports.`);
+    } else if (sub === 'finalize') {
+      console.log(LedgerManager.finalize());
+    } else if (sub === 'cleanup') {
+      LedgerManager.cleanup();
+      console.log('Ledger and wave snapshots cleaned up.');
+    }
+  },
+
+  merge(args) {
+    const sub = args[0];
+    if (sub !== 'validate') {
+      console.error('Usage: merge validate <wave-number> [reports.json]');
+      process.exit(1);
+    }
+
+    const waveNum = parseInt(args[1]);
+    let reports;
+
+    if (args[2] && fs.existsSync(args[2])) {
+      try {
+        reports = JSON.parse(fs.readFileSync(args[2], 'utf-8'));
+      } catch (err) {
+        console.error(`Error reading reports file: ${err.message}`);
+        process.exit(1);
+      }
+    } else if (waveNum) {
+      const wavePath = path.join(WAVES_DIR, `wave-${waveNum}.json`);
+      if (!fs.existsSync(wavePath)) {
+        console.error(`Wave snapshot not found: ${wavePath}`);
+        process.exit(1);
+      }
+      try {
+        const waveData = JSON.parse(fs.readFileSync(wavePath, 'utf-8'));
+        reports = waveData.results || [];
+      } catch (err) {
+        console.error(`Error reading wave snapshot: ${err.message}`);
+        process.exit(1);
+      }
+    } else {
+      console.error('Provide a wave number or reports file path.');
+      process.exit(1);
+    }
+
+    const result = MergeValidator.validate(Array.isArray(reports) ? reports : [reports]);
+    if (result.valid) {
+      console.log('PASS — no file conflicts detected.');
+    } else {
+      console.log('FAIL — file conflicts detected:');
+      console.log(result.message);
+      process.exit(1);
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1934,7 +2042,7 @@ function main() {
     console.log('  init [name] [description]   Initialize project');
     console.log('  plan                         Prepare planning context');
     console.log('  sprint                       Prepare sprint context');
-    console.log('  execute                      Execute next task');
+    console.log('  execute [--parallel] [--max-agents N]  Execute next task (or parallel waves)');
     console.log('  verify                       Verify sprint output');
     console.log('  review                       Prepare review context');
     console.log('  learn                        Compress and record patterns');
@@ -1949,6 +2057,8 @@ function main() {
     console.log('  remember <desc> <why>        Save explicit teaching pattern');
     console.log('  validate [target]            Validate state files');
     console.log('  dag <build|tier|recalculate> DAG operations for parallel execution');
+    console.log('  ledger <init|read|update|finalize|cleanup>  Execution ledger operations');
+    console.log('  merge validate <wave> [reports.json]        Validate file conflicts');
     console.log('  hook <hook-name>             Run hook handler');
     process.exit(0);
   }
