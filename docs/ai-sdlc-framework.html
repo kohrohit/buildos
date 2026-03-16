@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Native Software Development Lifecycle — Strategic Framework</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0a0a0f;
+  --paper: #f7f5f0;
+  --cream: #ebe8e0;
+  --charcoal: #1a1a2e;
+  --slate: #2d2d44;
+  --steel: #4a4a6a;
+  --mist: #8888a8;
+  --accent-teal: #00b4d8;
+  --accent-coral: #e85d75;
+  --accent-gold: #d4a843;
+  --accent-emerald: #2ec4b6;
+  --accent-violet: #7b68ee;
+  --accent-amber: #f0a500;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: 'DM Sans', sans-serif;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ---- COVER ---- */
+.cover {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cover::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -30%;
+  width: 900px;
+  height: 900px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,180,216,0.08) 0%, transparent 70%);
+  animation: pulse 8s ease-in-out infinite;
+}
+
+.cover::after {
+  content: '';
+  position: absolute;
+  bottom: -40%;
+  left: -20%;
+  width: 700px;
+  height: 700px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232,93,117,0.06) 0%, transparent 70%);
+  animation: pulse 10s ease-in-out infinite reverse;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+.cover-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--accent-teal);
+  margin-bottom: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+.cover h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(48px, 6vw, 96px);
+  font-weight: 900;
+  line-height: 1.05;
+  max-width: 900px;
+  position: relative;
+  z-index: 1;
+}
+
+.cover h1 em {
+  font-style: italic;
+  color: var(--accent-teal);
+}
+
+.cover-sub {
+  font-size: 20px;
+  color: var(--mist);
+  max-width: 600px;
+  margin-top: 32px;
+  font-weight: 300;
+  position: relative;
+  z-index: 1;
+}
+
+.cover-meta {
+  position: absolute;
+  bottom: 60px;
+  left: 80px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--steel);
+  letter-spacing: 2px;
+}
+
+/* ---- SECTIONS ---- */
+.section {
+  padding: 100px 80px;
+  position: relative;
+}
+
+.section-dark { background: var(--charcoal); }
+.section-light { background: var(--paper); color: var(--ink); }
+.section-ink { background: var(--ink); }
+
+.section-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 120px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.03);
+  position: absolute;
+  top: 40px;
+  right: 80px;
+  line-height: 1;
+}
+
+.section-light .section-num { color: rgba(0,0,0,0.03); }
+
+.section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--accent-teal);
+  margin-bottom: 16px;
+}
+
+.section-light .section-label { color: var(--accent-coral); }
+
+.section h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 4vw, 56px);
+  font-weight: 700;
+  line-height: 1.15;
+  max-width: 700px;
+  margin-bottom: 24px;
+}
+
+.section-desc {
+  font-size: 17px;
+  color: var(--mist);
+  max-width: 600px;
+  margin-bottom: 60px;
+  font-weight: 300;
+}
+
+.section-light .section-desc { color: var(--steel); }
+
+/* ---- DIAGRAM 1: AI-SDLC LIFECYCLE WHEEL ---- */
+.lifecycle-wheel {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 0;
+}
+
+.wheel-container {
+  position: relative;
+  width: 680px;
+  height: 680px;
+}
+
+.wheel-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-teal), var(--accent-violet));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  box-shadow: 0 0 60px rgba(0,180,216,0.3);
+}
+
+.wheel-center-label {
+  font-family: 'Playfair Display', serif;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.wheel-center-sub {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+.wheel-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.wheel-ring-outer {
+  width: 600px;
+  height: 600px;
+}
+
+.wheel-phase {
+  position: absolute;
+  width: 120px;
+  text-align: center;
+}
+
+.phase-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.phase-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.phase-desc {
+  font-size: 10px;
+  color: var(--mist);
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
+/* Phase positions (circle layout) */
+.phase-1 { top: -20px; left: 50%; transform: translateX(-50%); }
+.phase-2 { top: 80px; right: -20px; }
+.phase-3 { top: 260px; right: -40px; }
+.phase-4 { bottom: 60px; right: 20px; }
+.phase-5 { bottom: -20px; left: 50%; transform: translateX(-50%); }
+.phase-6 { bottom: 60px; left: 20px; }
+.phase-7 { top: 260px; left: -40px; }
+.phase-8 { top: 80px; left: -20px; }
+
+/* Connector arrows */
+.wheel-arrow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 280px;
+  height: 2px;
+  transform-origin: left center;
+}
+
+.wheel-arrow::after {
+  content: '→';
+  position: absolute;
+  right: 0;
+  top: -8px;
+  color: var(--accent-teal);
+  font-size: 14px;
+}
+
+/* ---- DIAGRAM 2: THREE-LAYER ARCHITECTURE ---- */
+.layers-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.arch-layer {
+  padding: 48px;
+  position: relative;
+  border-left: 4px solid;
+  overflow: hidden;
+}
+
+.arch-layer::before {
+  content: attr(data-label);
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
+.layer-governance {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-color: var(--accent-gold);
+}
+
+.layer-context {
+  background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+  border-color: var(--accent-teal);
+}
+
+.layer-execution {
+  background: linear-gradient(135deg, #0f3460 0%, #1a1a3e 100%);
+  border-color: var(--accent-emerald);
+}
+
+.layer-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.layer-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.badge-gold { background: rgba(212,168,67,0.2); color: var(--accent-gold); }
+.badge-teal { background: rgba(0,180,216,0.2); color: var(--accent-teal); }
+.badge-emerald { background: rgba(46,196,182,0.2); color: var(--accent-emerald); }
+
+.layer-desc {
+  font-size: 15px;
+  color: var(--mist);
+  margin-bottom: 24px;
+  max-width: 600px;
+}
+
+.layer-components {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.component-chip {
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-weight: 500;
+}
+
+/* ---- DIAGRAM 3: WAVE EXECUTION ---- */
+.wave-diagram {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.wave-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 32px;
+  position: relative;
+}
+
+.wave-label {
+  width: 100px;
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.wave-units {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+}
+
+.wave-unit {
+  flex: 1;
+  padding: 20px;
+  border-radius: 12px;
+  position: relative;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.wave-unit-active {
+  background: linear-gradient(135deg, rgba(0,180,216,0.15), rgba(123,104,238,0.1));
+  border: 1px solid rgba(0,180,216,0.3);
+}
+
+.wave-unit-parallel {
+  background: linear-gradient(135deg, rgba(46,196,182,0.15), rgba(0,180,216,0.1));
+  border: 1px solid rgba(46,196,182,0.3);
+}
+
+.wave-unit-blocked {
+  background: rgba(232,93,117,0.1);
+  border: 1px solid rgba(232,93,117,0.2);
+  opacity: 0.5;
+}
+
+.unit-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.unit-meta {
+  font-size: 11px;
+  color: var(--mist);
+}
+
+.unit-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 1px;
+}
+
+.badge-parallel { background: rgba(46,196,182,0.3); color: var(--accent-emerald); }
+.badge-sequential { background: rgba(212,168,67,0.3); color: var(--accent-gold); }
+
+.wave-sync {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 24px 0 24px 100px;
+  position: relative;
+}
+
+.wave-sync::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-teal), transparent);
+}
+
+.sync-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent-teal);
+  background: var(--charcoal);
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,180,216,0.3);
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- DIAGRAM 4: SECURITY LAYERS ---- */
+.security-stack {
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.security-timeline {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  position: relative;
+}
+
+.security-timeline::before {
+  content: '';
+  position: absolute;
+  top: 40px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent-emerald), var(--accent-teal), var(--accent-violet), var(--accent-coral));
+  border-radius: 2px;
+}
+
+.sec-phase {
+  padding: 0 20px;
+  text-align: center;
+  position: relative;
+}
+
+.sec-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  margin: 30px auto 24px;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 20px currentColor;
+}
+
+.sec-phase:nth-child(1) .sec-dot { background: var(--accent-emerald); color: var(--accent-emerald); }
+.sec-phase:nth-child(2) .sec-dot { background: var(--accent-teal); color: var(--accent-teal); }
+.sec-phase:nth-child(3) .sec-dot { background: var(--accent-violet); color: var(--accent-violet); }
+.sec-phase:nth-child(4) .sec-dot { background: var(--accent-coral); color: var(--accent-coral); }
+
+.sec-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.sec-when {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--mist);
+  margin-bottom: 16px;
+}
+
+.sec-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.sec-tool {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.sec-posture {
+  margin-top: 48px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.posture-card {
+  padding: 24px;
+  border-radius: 12px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.posture-strict { background: rgba(232,93,117,0.08); border-color: rgba(232,93,117,0.2); }
+.posture-moderate { background: rgba(212,168,67,0.08); border-color: rgba(212,168,67,0.2); }
+.posture-permissive { background: rgba(46,196,182,0.08); border-color: rgba(46,196,182,0.2); }
+
+.posture-name {
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.posture-desc {
+  font-size: 12px;
+  color: var(--mist);
+  line-height: 1.5;
+}
+
+/* ---- DIAGRAM 5: CONTEXT ENGINEERING ---- */
+.context-flow {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.context-tiers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.tier-card {
+  padding: 28px 20px;
+  border-radius: 12px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.tier-card::before {
+  content: attr(data-tier);
+  position: absolute;
+  top: -10px;
+  right: -5px;
+  font-family: 'Playfair Display', serif;
+  font-size: 80px;
+  font-weight: 900;
+  opacity: 0.04;
+  line-height: 1;
+}
+
+.tier-1 { background: linear-gradient(180deg, rgba(0,180,216,0.15), transparent); border: 1px solid rgba(0,180,216,0.2); }
+.tier-2 { background: linear-gradient(180deg, rgba(46,196,182,0.12), transparent); border: 1px solid rgba(46,196,182,0.2); }
+.tier-3 { background: linear-gradient(180deg, rgba(212,168,67,0.1), transparent); border: 1px solid rgba(212,168,67,0.2); }
+.tier-4 { background: linear-gradient(180deg, rgba(136,136,168,0.08), transparent); border: 1px solid rgba(136,136,168,0.15); }
+
+.tier-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.tier-1 .tier-label { color: var(--accent-teal); }
+.tier-2 .tier-label { color: var(--accent-emerald); }
+.tier-3 .tier-label { color: var(--accent-gold); }
+.tier-4 .tier-label { color: var(--mist); }
+
+.tier-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.tier-items {
+  font-size: 12px;
+  color: var(--mist);
+  line-height: 1.8;
+}
+
+.context-budget {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 32px;
+}
+
+.budget-title {
+  font-weight: 600;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.budget-bar-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.budget-label {
+  width: 140px;
+  font-size: 12px;
+  color: var(--mist);
+  flex-shrink: 0;
+}
+
+.budget-bar {
+  flex: 1;
+  height: 28px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.budget-fill {
+  height: 100%;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  transition: width 1s ease;
+}
+
+.fill-teal { background: linear-gradient(90deg, var(--accent-teal), rgba(0,180,216,0.6)); }
+.fill-emerald { background: linear-gradient(90deg, var(--accent-emerald), rgba(46,196,182,0.6)); }
+.fill-gold { background: linear-gradient(90deg, var(--accent-gold), rgba(212,168,67,0.6)); }
+.fill-violet { background: linear-gradient(90deg, var(--accent-violet), rgba(123,104,238,0.6)); }
+.fill-coral { background: linear-gradient(90deg, var(--accent-coral), rgba(232,93,117,0.6)); }
+
+/* ---- DIAGRAM 6: LEARNING FEEDBACK LOOP ---- */
+.feedback-loop {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.loop-stage {
+  display: grid;
+  grid-template-columns: 80px 1fr 120px;
+  align-items: center;
+  padding: 24px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.loop-stage:last-child { border-bottom: none; }
+
+.loop-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 36px;
+  font-weight: 900;
+  color: rgba(0,0,0,0.08);
+}
+
+.loop-content h4 {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.loop-content p {
+  font-size: 13px;
+  color: var(--steel);
+  line-height: 1.5;
+}
+
+.loop-trust {
+  text-align: right;
+}
+
+.trust-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+
+.trust-high { background: rgba(46,196,182,0.15); color: #1a8a7d; }
+.trust-medium { background: rgba(212,168,67,0.15); color: #8a6d1a; }
+.trust-low { background: rgba(232,93,117,0.15); color: #8a1a2d; }
+
+/* ---- DIAGRAM 7: MATURITY MODEL ---- */
+.maturity-grid {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+}
+
+.maturity-col {
+  text-align: center;
+}
+
+.maturity-header {
+  padding: 20px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--mist);
+  border-bottom: 2px solid;
+}
+
+.maturity-col:nth-child(1) .maturity-header { border-color: var(--steel); }
+.maturity-col:nth-child(2) .maturity-header { border-color: var(--accent-coral); }
+.maturity-col:nth-child(3) .maturity-header { border-color: var(--accent-gold); }
+.maturity-col:nth-child(4) .maturity-header { border-color: var(--accent-teal); }
+.maturity-col:nth-child(5) .maturity-header { border-color: var(--accent-emerald); }
+
+.maturity-cell {
+  padding: 16px 12px;
+  font-size: 12px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.maturity-dim {
+  font-size: 12px;
+  color: var(--mist);
+  padding: 16px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+}
+
+.cell-active {
+  background: rgba(0,180,216,0.08);
+  color: var(--accent-teal);
+  font-weight: 600;
+}
+
+.cell-dim { color: var(--steel); }
+
+/* ---- FOOTER ---- */
+.footer {
+  padding: 60px 80px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footer-left {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--steel);
+  letter-spacing: 2px;
+}
+
+.footer-right {
+  font-size: 13px;
+  color: var(--mist);
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 900px) {
+  .cover, .section { padding: 60px 32px; }
+  .security-timeline { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .context-tiers { grid-template-columns: repeat(2, 1fr); }
+  .maturity-grid { grid-template-columns: repeat(3, 1fr); }
+  .wave-units { flex-direction: column; }
+  .wave-label { width: 80px; }
+}
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<section class="cover">
+  <div class="cover-label">Strategic Technology Framework</div>
+  <h1>The <em>AI-Native</em> Software Development Lifecycle</h1>
+  <p class="cover-sub">A governance-first framework for orchestrating AI agents across the full development lifecycle — from architecture discovery to production deployment.</p>
+  <div class="cover-meta">Confidential — Strategy & Technology Practice — 2026</div>
+</section>
+
+<!-- SECTION 1: LIFECYCLE -->
+<section class="section section-dark">
+  <div class="section-num">01</div>
+  <div class="section-label">The Lifecycle</div>
+  <h2>Eight-Phase AI-SDLC</h2>
+  <p class="section-desc">Traditional SDLC assumes human developers hold context across sessions. AI-native development requires explicit context engineering at every phase transition.</p>
+
+  <div style="max-width:1000px; margin:0 auto;">
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px;">
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(0,180,216,0.12), transparent); border:1px solid rgba(0,180,216,0.2);">
+        <div style="font-size:32px; margin-bottom:12px;">📐</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Initialize</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Seed the project brain from documentation. Ingest SRS, architecture specs, diagrams. Establish governance guardrails.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(46,196,182,0.12), transparent); border:1px solid rgba(46,196,182,0.2);">
+        <div style="font-size:32px; margin-bottom:12px;">🗺️</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Plan</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Architecture discovery graded by system complexity. Decompose into epics with dependency mapping and sprint candidates.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(212,168,67,0.12), transparent); border:1px solid rgba(212,168,67,0.2);">
+        <div style="font-size:32px; margin-bottom:12px;">🎯</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Sprint</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Define scope, tasks, acceptance criteria, and deliverables. Task dependencies and file scopes enable parallel execution.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(123,104,238,0.12), transparent); border:1px solid rgba(123,104,238,0.2);">
+        <div style="font-size:32px; margin-bottom:12px;">⚡</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Execute</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Sequential or wave-based parallel execution. Each task runs under governance constraints with inline security scanning.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(232,93,117,0.12), transparent); border:1px solid rgba(232,93,117,0.2);">
+        <div style="font-size:32px; margin-bottom:12px;">✅</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Verify</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Blind verification against acceptance criteria. Optional DAST scanning for runtime vulnerabilities.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(240,165,0,0.12), transparent); border:1px solid rgba(240,165,0,0.2);">
+        <div style="font-size:32px; margin-bottom:12px;">🔍</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Review</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Isolated specialist agents review independently. Code, security, architecture, QA — each blind to implementation reasoning.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(0,180,216,0.08), transparent); border:1px solid rgba(0,180,216,0.15);">
+        <div style="font-size:32px; margin-bottom:12px;">🧠</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Learn</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">Compress sprint into summaries. Extract patterns with trust-tiered approval. Record architecture decisions.</div>
+      </div>
+
+      <div style="padding:28px; border-radius:12px; background:linear-gradient(135deg, rgba(46,196,182,0.08), transparent); border:1px solid rgba(46,196,182,0.15);">
+        <div style="font-size:32px; margin-bottom:12px;">🔒</div>
+        <div style="font-family:'Playfair Display',serif; font-size:18px; font-weight:700; margin-bottom:4px;">Scan</div>
+        <div style="font-size:12px; color:var(--mist); line-height:1.5;">SAST, dependency audit, secrets detection at every phase. Configurable enforcement posture: strict, moderate, or permissive.</div>
+      </div>
+
+    </div>
+
+    <div style="text-align:center; margin-top:40px; padding:24px; border:1px dashed rgba(255,255,255,0.1); border-radius:12px;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:3px; color:var(--accent-teal);">CONTINUOUS LOOP</div>
+      <div style="font-size:14px; color:var(--mist); margin-top:8px;">Initialize → Plan → Sprint → Execute → Verify → Review → Learn → Sprint → ...</div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 2: THREE-LAYER ARCHITECTURE -->
+<section class="section section-ink">
+  <div class="section-num">02</div>
+  <div class="section-label">Architecture</div>
+  <h2>Three-Layer Governance Model</h2>
+  <p class="section-desc">Separating permanent governance from temporary execution prevents context rot and ensures consistency across AI agent sessions.</p>
+
+  <div class="layers-grid">
+    <div class="arch-layer layer-governance" data-label="PERMANENT">
+      <div class="layer-title">
+        Governance Layer
+        <span class="layer-badge badge-gold">Always Active</span>
+      </div>
+      <p class="layer-desc">The project's immune system. Holds architectural truth, coding standards, specialist agents, and quality hooks. Never modified by execution — only by explicit human decision.</p>
+      <div class="layer-components">
+        <span class="component-chip">Project Brain (Vision, Architecture, Domain, NFRs)</span>
+        <span class="component-chip">7 Specialist Agents</span>
+        <span class="component-chip">Coding Standards (per language)</span>
+        <span class="component-chip">Quality Hooks</span>
+        <span class="component-chip">Architecture Decision Records</span>
+        <span class="component-chip">Security Posture</span>
+      </div>
+    </div>
+
+    <div class="arch-layer layer-context" data-label="ORCHESTRATOR">
+      <div class="layer-title">
+        Context Layer
+        <span class="layer-badge badge-teal">Traffic Control</span>
+      </div>
+      <p class="layer-desc">Assembles minimal, relevant context per phase. Prevents token waste and context starvation through strict budgets, freshness policies, and priority-based dropping.</p>
+      <div class="layer-components">
+        <span class="component-chip">Context Packs (Planning, Execution, Review)</span>
+        <span class="component-chip">Token Budgets (4,300–5,800 tokens)</span>
+        <span class="component-chip">Inclusion / Exclusion Policies</span>
+        <span class="component-chip">Freshness & Staleness Thresholds</span>
+        <span class="component-chip">Compression Policies</span>
+      </div>
+    </div>
+
+    <div class="arch-layer layer-execution" data-label="TEMPORARY">
+      <div class="layer-title">
+        Execution Layer
+        <span class="layer-badge badge-emerald">Sprint-Scoped</span>
+      </div>
+      <p class="layer-desc">Operates inside governance boundaries. Plans, implements, verifies, and learns. Can propose changes but never silently overwrite standards or decisions.</p>
+      <div class="layer-components">
+        <span class="component-chip">Sprint Workflows (Plan, Execute, Verify)</span>
+        <span class="component-chip">Task Agents (Planner, Executor, Verifier)</span>
+        <span class="component-chip">Wave-Based Parallel Execution</span>
+        <span class="component-chip">Execution Ledger</span>
+        <span class="component-chip">Security Scanner</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 3: PARALLEL EXECUTION -->
+<section class="section section-dark">
+  <div class="section-num">03</div>
+  <div class="section-label">Parallelism</div>
+  <h2>Wave-Based Parallel Execution</h2>
+  <p class="section-desc">Independent tasks execute concurrently in isolated environments. Context synchronizes between waves via a shared execution ledger. The dependency graph IS the synchronization mechanism.</p>
+
+  <div class="wave-diagram">
+    <div class="wave-row">
+      <div class="wave-label">Wave 1</div>
+      <div class="wave-units">
+        <div class="wave-unit wave-unit-parallel">
+          <span class="unit-badge badge-parallel">PARALLEL</span>
+          <div class="unit-name">User Model</div>
+          <div class="unit-meta">Tier 1 · 1 file · Isolated worktree</div>
+        </div>
+        <div class="wave-unit wave-unit-parallel">
+          <span class="unit-badge badge-parallel">PARALLEL</span>
+          <div class="unit-name">Order Model</div>
+          <div class="unit-meta">Tier 1 · 1 file · Isolated worktree</div>
+        </div>
+        <div class="wave-unit wave-unit-parallel">
+          <span class="unit-badge badge-parallel">PARALLEL</span>
+          <div class="unit-name">Config Setup</div>
+          <div class="unit-meta">Tier 1 · 2 files · Isolated worktree</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wave-sync">
+      <span class="sync-label">↓ Merge + Ledger Sync ↓</span>
+    </div>
+
+    <div class="wave-row">
+      <div class="wave-label">Wave 2</div>
+      <div class="wave-units">
+        <div class="wave-unit wave-unit-active">
+          <span class="unit-badge badge-parallel">PARALLEL</span>
+          <div class="unit-name">Auth Middleware</div>
+          <div class="unit-meta">Tier 3 (Opus) · Depends on User Model</div>
+        </div>
+        <div class="wave-unit wave-unit-parallel">
+          <span class="unit-badge badge-parallel">PARALLEL</span>
+          <div class="unit-name">User-Order Service</div>
+          <div class="unit-meta">Tier 2 · Depends on both models</div>
+        </div>
+        <div class="wave-unit wave-unit-parallel">
+          <span class="unit-badge badge-parallel">PARALLEL</span>
+          <div class="unit-name">DB Migrations</div>
+          <div class="unit-meta">Tier 3 (Opus) · Depends on both models</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wave-sync">
+      <span class="sync-label">↓ Merge + Ledger Sync ↓</span>
+    </div>
+
+    <div class="wave-row">
+      <div class="wave-label">Wave 3</div>
+      <div class="wave-units">
+        <div class="wave-unit wave-unit-active">
+          <span class="unit-badge badge-sequential">SEQUENTIAL</span>
+          <div class="unit-name">API Routes</div>
+          <div class="unit-meta">Depends on Auth + Service + Migrations</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 4: SECURITY -->
+<section class="section section-ink">
+  <div class="section-num">04</div>
+  <div class="section-label">Security</div>
+  <h2>Multi-Layer Security Integration</h2>
+  <p class="section-desc">Security scanning is not an afterthought — it's embedded at every lifecycle phase with configurable enforcement thresholds.</p>
+
+  <div class="security-stack">
+    <div class="security-timeline">
+      <div class="sec-phase">
+        <div class="sec-dot"></div>
+        <div class="sec-title">Write-Time</div>
+        <div class="sec-when">During Execution</div>
+        <div class="sec-tools">
+          <span class="sec-tool">SAST (fast rules)</span>
+          <span class="sec-tool">Secrets Detection</span>
+        </div>
+      </div>
+      <div class="sec-phase">
+        <div class="sec-dot"></div>
+        <div class="sec-title">Review-Time</div>
+        <div class="sec-when">During Review</div>
+        <div class="sec-tools">
+          <span class="sec-tool">Full SAST</span>
+          <span class="sec-tool">Deep Analysis</span>
+          <span class="sec-tool">Dependency Audit</span>
+        </div>
+      </div>
+      <div class="sec-phase">
+        <div class="sec-dot"></div>
+        <div class="sec-title">Verify-Time</div>
+        <div class="sec-when">During Verification</div>
+        <div class="sec-tools">
+          <span class="sec-tool">DAST (opt-in)</span>
+          <span class="sec-tool">Runtime Scanning</span>
+        </div>
+      </div>
+      <div class="sec-phase">
+        <div class="sec-dot"></div>
+        <div class="sec-title">On-Demand</div>
+        <div class="sec-when">Anytime</div>
+        <div class="sec-tools">
+          <span class="sec-tool">Full Suite</span>
+          <span class="sec-tool">Finding Triage</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-posture">
+      <div class="posture-card posture-strict">
+        <div class="posture-name" style="color:var(--accent-coral);">Strict</div>
+        <div class="posture-desc">HIGH/CRITICAL findings block task completion. MEDIUM generates warnings. Zero tolerance for known vulnerabilities in production code.</div>
+      </div>
+      <div class="posture-card posture-moderate">
+        <div class="posture-name" style="color:var(--accent-gold);">Moderate</div>
+        <div class="posture-desc">HIGH/CRITICAL generate warnings. All findings logged. Developer decides. Balanced approach for active development phases.</div>
+      </div>
+      <div class="posture-card posture-permissive">
+        <div class="posture-name" style="color:var(--accent-emerald);">Permissive</div>
+        <div class="posture-desc">All findings logged only. Nothing blocks. Maximum velocity during prototyping. Switch to strict before production.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 5: CONTEXT ENGINEERING -->
+<section class="section section-dark">
+  <div class="section-num">05</div>
+  <div class="section-label">Context Engineering</div>
+  <h2>Precision Context Assembly</h2>
+  <p class="section-desc">AI agents are only as good as the context they receive. The framework assembles minimal, phase-specific context packs with strict token budgets and conflict resolution hierarchies.</p>
+
+  <div class="context-flow">
+    <div class="context-tiers">
+      <div class="tier-card tier-1" data-tier="T1">
+        <div class="tier-label">Tier 1</div>
+        <div class="tier-name">Ground Truth</div>
+        <div class="tier-items">
+          Actual code in repository<br>
+          Test results (latest run)<br>
+          Active architecture decisions
+        </div>
+      </div>
+      <div class="tier-card tier-2" data-tier="T2">
+        <div class="tier-label">Tier 2</div>
+        <div class="tier-name">Current State</div>
+        <div class="tier-items">
+          Sprint state<br>
+          Active tasks<br>
+          Architecture spec<br>
+          NFR definitions
+        </div>
+      </div>
+      <div class="tier-card tier-3" data-tier="T3">
+        <div class="tier-label">Tier 3</div>
+        <div class="tier-name">Summaries</div>
+        <div class="tier-items">
+          Sprint summaries<br>
+          Module summaries<br>
+          Learned patterns<br>
+          Project summary
+        </div>
+      </div>
+      <div class="tier-card tier-4" data-tier="T4">
+        <div class="tier-label">Tier 4</div>
+        <div class="tier-name">Historical</div>
+        <div class="tier-items">
+          Archived sprints<br>
+          Old git history<br>
+          Superseded decisions
+        </div>
+      </div>
+    </div>
+
+    <div class="context-budget">
+      <div class="budget-title">Token Budget per Phase (Execution Pack Example)</div>
+
+      <div class="budget-bar-row">
+        <div class="budget-label">Module (deep)</div>
+        <div class="budget-bar">
+          <div class="budget-fill fill-teal" style="width:34%;">1,500 tokens</div>
+        </div>
+      </div>
+      <div class="budget-bar-row">
+        <div class="budget-label">Rules</div>
+        <div class="budget-bar">
+          <div class="budget-fill fill-emerald" style="width:23%;">1,000 tokens</div>
+        </div>
+      </div>
+      <div class="budget-bar-row">
+        <div class="budget-label">Execution Ledger</div>
+        <div class="budget-bar">
+          <div class="budget-fill fill-violet" style="width:18%;">800 tokens</div>
+        </div>
+      </div>
+      <div class="budget-bar-row">
+        <div class="budget-label">Sprint (filtered)</div>
+        <div class="budget-bar">
+          <div class="budget-fill fill-gold" style="width:11%;">500 tokens</div>
+        </div>
+      </div>
+      <div class="budget-bar-row">
+        <div class="budget-label">Governance</div>
+        <div class="budget-bar">
+          <div class="budget-fill fill-coral" style="width:11%;">500 tokens</div>
+        </div>
+      </div>
+
+      <div style="text-align:right; margin-top:12px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--mist);">
+        Total: 4,300 tokens · Hard ceiling: 5,800
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 6: LEARNING -->
+<section class="section section-light">
+  <div class="section-num">06</div>
+  <div class="section-label">Organizational Learning</div>
+  <h2>Trust-Tiered Pattern Recognition</h2>
+  <p class="section-desc">The system learns from three channels with different trust levels, approval gates, and expiry policies. Patterns are reinforced through application, not just collection.</p>
+
+  <div class="feedback-loop">
+    <div class="loop-stage">
+      <div class="loop-num">01</div>
+      <div class="loop-content">
+        <h4>Explicit Teaching</h4>
+        <p>Human directly teaches the system a pattern or principle. No approval gate needed — the human said it. Patterns persist indefinitely.</p>
+      </div>
+      <div class="loop-trust">
+        <span class="trust-badge trust-high">HIGH TRUST</span>
+        <div style="font-size:11px; color:var(--steel); margin-top:4px;">Evergreen · 0.9 confidence</div>
+      </div>
+    </div>
+
+    <div class="loop-stage">
+      <div class="loop-num">02</div>
+      <div class="loop-content">
+        <h4>Sprint Review Extraction</h4>
+        <p>Patterns extracted from completed sprints. Inline approval — human confirms or rejects each pattern before it's saved. 90-day TTL with reinforcement.</p>
+      </div>
+      <div class="loop-trust">
+        <span class="trust-badge trust-medium">MEDIUM TRUST</span>
+        <div style="font-size:11px; color:var(--steel); margin-top:4px;">90-day TTL · 0.7 confidence</div>
+      </div>
+    </div>
+
+    <div class="loop-stage">
+      <div class="loop-num">03</div>
+      <div class="loop-content">
+        <h4>Log Analysis</h4>
+        <p>Candidate patterns extracted from production logs and error data. Staged for batch review — never auto-applied. 30-day TTL if approved.</p>
+      </div>
+      <div class="loop-trust">
+        <span class="trust-badge trust-low">LOW TRUST</span>
+        <div style="font-size:11px; color:var(--steel); margin-top:4px;">30-day TTL · 0.5 confidence</div>
+      </div>
+    </div>
+
+    <div class="loop-stage" style="border-bottom:none;">
+      <div class="loop-num">04</div>
+      <div class="loop-content">
+        <h4>Pattern Lifecycle</h4>
+        <p>Patterns that are applied successfully get reinforced (+confidence, TTL reset). Patterns that expire surface for audit. 50-pattern cap forces pruning — quality over quantity.</p>
+      </div>
+      <div class="loop-trust">
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <span style="font-size:20px;">🔄</span>
+        </div>
+        <div style="font-size:11px; color:var(--steel); margin-top:4px;">Reinforce → Expire → Audit</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 7: MATURITY MODEL -->
+<section class="section section-ink">
+  <div class="section-num">07</div>
+  <div class="section-label">Maturity Model</div>
+  <h2>AI-SDLC Capability Maturity</h2>
+  <p class="section-desc">Organizations progress through five levels of AI-native development maturity. Each level builds on the previous, adding governance, automation, and learning capabilities.</p>
+
+  <div class="maturity-grid">
+    <div class="maturity-col">
+      <div class="maturity-header">Level 1<br>Ad Hoc</div>
+      <div class="maturity-cell cell-dim">No structure</div>
+      <div class="maturity-cell cell-dim">Manual only</div>
+      <div class="maturity-cell cell-dim">None</div>
+      <div class="maturity-cell cell-dim">None</div>
+      <div class="maturity-cell cell-dim">Per-session</div>
+    </div>
+    <div class="maturity-col">
+      <div class="maturity-header">Level 2<br>Managed</div>
+      <div class="maturity-cell cell-dim">Basic rules</div>
+      <div class="maturity-cell cell-dim">Sequential</div>
+      <div class="maturity-cell cell-dim">Manual scans</div>
+      <div class="maturity-cell cell-dim">Full context</div>
+      <div class="maturity-cell cell-dim">Documented</div>
+    </div>
+    <div class="maturity-col">
+      <div class="maturity-header">Level 3<br>Defined</div>
+      <div class="maturity-cell">Specialist agents</div>
+      <div class="maturity-cell">Sprint-based</div>
+      <div class="maturity-cell">Inline SAST</div>
+      <div class="maturity-cell">Phase packs</div>
+      <div class="maturity-cell">Pattern capture</div>
+    </div>
+    <div class="maturity-col">
+      <div class="maturity-header">Level 4<br>Quantified</div>
+      <div class="maturity-cell cell-active">Blind reviews</div>
+      <div class="maturity-cell cell-active">Wave parallel</div>
+      <div class="maturity-cell cell-active">Full pipeline</div>
+      <div class="maturity-cell cell-active">Token budgets</div>
+      <div class="maturity-cell cell-active">Trust-tiered</div>
+    </div>
+    <div class="maturity-col">
+      <div class="maturity-header">Level 5<br>Optimizing</div>
+      <div class="maturity-cell cell-dim">Self-improving</div>
+      <div class="maturity-cell cell-dim">Auto-scaling</div>
+      <div class="maturity-cell cell-dim">Predictive</div>
+      <div class="maturity-cell cell-dim">Adaptive</div>
+      <div class="maturity-cell cell-dim">Autonomous</div>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:2px; max-width:1000px; margin:0 auto;">
+    <div style="text-align:center; padding:12px; font-size:11px; color:var(--steel);">Governance</div>
+    <div style="text-align:center; padding:12px; font-size:11px; color:var(--steel);">Execution</div>
+    <div style="text-align:center; padding:12px; font-size:11px; color:var(--steel);">Security</div>
+    <div style="text-align:center; padding:12px; font-size:11px; color:var(--steel);">Context</div>
+    <div style="text-align:center; padding:12px; font-size:11px; color:var(--steel);">Learning</div>
+  </div>
+
+  <div style="text-align:center; margin-top:32px;">
+    <div style="display:inline-block; padding:12px 24px; border:1px solid rgba(0,180,216,0.3); border-radius:8px; background:rgba(0,180,216,0.05);">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:2px; color:var(--accent-teal);">THIS FRAMEWORK OPERATES AT LEVEL 4</span>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="footer-left">Rohit Kohli · kohrohit@gmail.com</div>
+  <div class="footer-right">AI-Native Software Development Lifecycle · Strategic Framework · 2026</div>
+</div>
+
+</body>
+</html>
