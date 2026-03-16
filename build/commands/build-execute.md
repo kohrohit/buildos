@@ -43,6 +43,20 @@ Also load: `state/sprint-state.json`, `state/task-state.json`, `state/context-st
    - Check that output matches task deliverable expectations
    - Verify no governance violations in produced code
 
+### Security Scan (inline, per-task)
+
+After self-validation and before marking the task complete:
+
+1. Collect files modified during this task
+2. Call `build-tools.cjs scan files <file1> <file2> ...`
+3. Check the result:
+   - If `blocked: true` → set task status to `blocked_by_security`, report findings, stop
+   - If findings exist but not blocked → report findings as warnings, continue
+   - If no findings → continue silently
+4. Include any findings in the execution report
+
+This adds ~1-2 seconds per task. Only runs Semgrep (quick rulesets), not SonarQube.
+
 6. **Generate execution report**
 
 ## Governance Checks
