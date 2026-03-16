@@ -2993,6 +2993,74 @@ const Commands = {
       process.exit(1);
     }
   },
+
+  docs(args) {
+    const sub = args[0];
+    if (!sub || !['scan', 'extract', 'populate'].includes(sub)) {
+      console.error('Usage: docs <scan|extract|populate> <path>');
+      process.exit(1);
+    }
+
+    const target = args[1];
+    if (!target) {
+      console.error(`Usage: docs ${sub} <path>`);
+      process.exit(1);
+    }
+
+    if (sub === 'scan') {
+      const result = DocumentProcessor.scanFolder(target);
+      if (result.error) {
+        console.error(result.error);
+        process.exit(1);
+      }
+      console.log(JSON.stringify(result, null, 2));
+    } else if (sub === 'extract') {
+      const result = DocumentProcessor.extractText(target);
+      if (result.type === 'error') {
+        console.error(result.error);
+        process.exit(1);
+      }
+      console.log(JSON.stringify(result, null, 2));
+    } else if (sub === 'populate') {
+      console.log(`Processing documents from ${target}...`);
+      const result = DocumentProcessor.populate(target);
+      if (result.error) {
+        console.error(result.error);
+        process.exit(1);
+      }
+      if (result.warning) {
+        console.log(`Warning: ${result.warning}`);
+        return;
+      }
+
+      console.log('\nDocument Ingestion Complete');
+      console.log(`  Folder: ${target}`);
+      console.log(`  Files found: ${result.manifest.total_supported}`);
+      console.log(`  Skipped: ${result.manifest.total_skipped}`);
+      console.log('');
+
+      if (result.extracted.length > 0) {
+        console.log('  Extracted (Node.js):');
+        for (const e of result.extracted) {
+          console.log(`    ✓ ${e.file} → sources/${DocumentProcessor._flattenPath(e.file)}.md (${e.wordCount} words)`);
+        }
+      }
+
+      if (result.claude_read.length > 0) {
+        console.log('  Requires Claude to read:');
+        for (const c of result.claude_read) {
+          console.log(`    → ${c.file} (${c.fileType}) — Claude must read this directly`);
+        }
+      }
+
+      if (result.errors.length > 0) {
+        console.log('  Errors:');
+        for (const e of result.errors) {
+          console.log(`    ✗ ${e.file}: ${e.error}`);
+        }
+      }
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -3048,6 +3116,7 @@ function main() {
     console.log('  dag <build|tier|recalculate> DAG operations for parallel execution');
     console.log('  ledger <init|read|update|finalize|cleanup>  Execution ledger operations');
     console.log('  scan <detect|files|project|runtime|report|configure|sonarqube|history|dismiss>  Security scanning');
+    console.log('  docs <scan|extract|populate> <path>  Document ingestion for brain seeding');
     console.log('  merge validate <wave> [reports.json]        Validate file conflicts');
     console.log('  hook <hook-name>             Run hook handler');
     process.exit(0);
