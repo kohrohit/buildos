@@ -1996,6 +1996,291 @@ const SecurityScanner = {
 };
 
 // ---------------------------------------------------------------------------
+// DocumentProcessor — extract text from project literature for brain seeding
+// ---------------------------------------------------------------------------
+
+const DocumentProcessor = {
+  _docExec(cmd, timeout) {
+    try {
+      return { output: _execSyncRaw(cmd, { encoding: 'utf-8', timeout: timeout || 30000, stdio: ['pipe', 'pipe', 'pipe'] }), error: null };
+    } catch (err) {
+      return { output: null, error: err.message || 'unknown error' };
+    }
+  },
+
+  _docExecSimple(cmd, timeout) {
+    try {
+      return _execSyncRaw(cmd, { encoding: 'utf-8', timeout: timeout || 30000, stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch {
+      return null;
+    }
+  },
+
+  _flattenPath(relativePath) {
+    return relativePath.replace(/\//g, '--').replace(/\\/g, '--');
+  },
+
+  _sourcePath(relativePath) {
+    const flatName = this._flattenPath(relativePath);
+    return path.join(BRAIN_SOURCES_DIR, `${flatName}.md`);
+  },
+
+  scanFolder(folderPath) {
+    if (!fs.existsSync(folderPath)) {
+      return { error: `Folder not found: ${folderPath}` };
+    }
+
+    const files = [];
+    const skipped = [];
+
+    const walk = (dir, base) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        const relPath = path.join(base, entry.name);
+
+        if (entry.isSymbolicLink()) {
+          skipped.push({ path: relPath, reason: 'symlink skipped' });
+          continue;
+        }
+
+        if (entry.isDirectory()) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          walk(fullPath, relPath);
+          continue;
+        }
+
+        const ext = path.extname(entry.name).toLowerCase();
+        const type = SUPPORTED_DOC_TYPES[ext];
+
+        if (!type) {
+          skipped.push({ path: relPath, reason: 'unsupported type' });
+          continue;
+        }
+
+        const stat = fs.statSync(fullPath);
+        const fileInfo = {
+          path: fullPath,
+          relative_path: relPath,
+          type,
+          size_bytes: stat.size,
+        };
+
+        if (stat.size > 50 * 1024 * 1024) {
+          fileInfo.warning = 'Large file (>50MB). Extraction may be slow.';
+        }
+
+        files.push(fileInfo);
+      }
+    };
+
+    walk(folderPath, '');
+
+    return {
+      folder: folderPath,
+      files,
+      skipped,
+      total_supported: files.length,
+      total_skipped: skipped.length,
+    };
+  },
+
+  extractText(filePath, fileType) {
+    const type = fileType || SUPPORTED_DOC_TYPES[path.extname(filePath).toLowerCase()];
+
+    if (!type) {
+      return { error: `Unsupported file type: ${path.extname(filePath)}`, type: 'error' };
+    }
+
+    // Claude-handled types
+    if (type === 'pdf' || type === 'image') {
+      return { path: filePath, type: 'claude-read', fileType: type };
+    }
+
+    if (type === 'figma') {
+      const url = readTextFile(filePath)?.trim();
+      if (!url || !url.includes('figma.com')) {
+        return { error: `Invalid Figma URL in ${filePath}`, type: 'error' };
+      }
+      return { path: filePath, url, type: 'claude-read', fileType: 'figma' };
+    }
+
+    // Node.js-handled types
+    let text = '';
+
+    if (type === 'docx') {
+      const unzipCheck = this._docExecSimple('which unzip');
+      if (!unzipCheck) {
+        return { error: 'unzip not available. Install: apt install unzip (Linux) or brew install unzip (macOS)', type: 'error' };
+      }
+      const result = this._docExec(`unzip -p "${filePath}" word/document.xml 2>/dev/null`, 30000);
+      if (result.error || !result.output) {
+        return { error: `Failed to extract DOCX: ${result.error || 'unzip failed'}`, type: 'error' };
+      }
+      text = result.output
+        .replace(/<\/w:p>/g, '\n')
+        .replace(/<\/w:tr>/g, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    } else if (type === 'pptx') {
+      const unzipCheck = this._docExecSimple('which unzip');
+      if (!unzipCheck) {
+        return { error: 'unzip not available. Install: apt install unzip (Linux) or brew install unzip (macOS)', type: 'error' };
+      }
+      const listResult = this._docExecSimple(`unzip -l "${filePath}" 2>/dev/null | grep "ppt/slides/slide" | grep -v "_rels"`, 10000);
+      if (!listResult) {
+        return { error: 'Failed to list PPTX slides', type: 'error' };
+      }
+      const slideFiles = listResult.trim().split('\n')
+        .map(line => line.trim().split(/\s+/).pop())
+        .filter(f => f && f.endsWith('.xml'))
+        .sort();
+
+      const slides = [];
+      for (let i = 0; i < slideFiles.length; i++) {
+        const slideXml = this._docExecSimple(`unzip -p "${filePath}" "${slideFiles[i]}" 2>/dev/null`, 10000);
+        if (slideXml) {
+          const slideText = slideXml
+            .replace(/<\/a:p>/g, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+          if (slideText) {
+            slides.push(`## Slide ${i + 1}\n\n${slideText}`);
+          }
+        }
+      }
+
+      const notesResult = this._docExecSimple(`unzip -l "${filePath}" 2>/dev/null | grep "ppt/notesSlides" | grep -v "_rels"`, 10000);
+      if (notesResult) {
+        const noteFiles = notesResult.trim().split('\n')
+          .map(line => line.trim().split(/\s+/).pop())
+          .filter(f => f && f.endsWith('.xml'))
+          .sort();
+
+        for (let i = 0; i < noteFiles.length; i++) {
+          const noteXml = this._docExecSimple(`unzip -p "${filePath}" "${noteFiles[i]}" 2>/dev/null`, 10000);
+          if (noteXml) {
+            const noteText = noteXml
+              .replace(/<\/a:p>/g, '\n')
+              .replace(/<[^>]+>/g, '')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
+            if (noteText && slides[i]) {
+              slides[i] += `\n\n**Speaker Notes:**\n${noteText}`;
+            }
+          }
+        }
+      }
+
+      text = slides.join('\n\n---\n\n');
+    } else if (type === 'yaml' || type === 'json') {
+      text = readTextFile(filePath) || '';
+      const isOpenAPI = text.includes('openapi:') || text.includes('"openapi"') || text.includes('swagger:') || text.includes('"swagger"');
+      if (isOpenAPI) {
+        text = `[OpenAPI Specification]\n\n${text}`;
+      } else if (type === 'json') {
+        return { error: `Skipped ${filePath}: JSON file is not an OpenAPI spec`, type: 'error' };
+      }
+    } else {
+      text = readTextFile(filePath) || '';
+    }
+
+    if (!text) {
+      return { error: `No text extracted from ${filePath}`, type: 'error' };
+    }
+
+    const wordCount = text.split(/\s+/).length;
+    return { text, type: 'extracted', fileType: type, wordCount };
+  },
+
+  saveSource(relativePath, text, metadata) {
+    if (!fs.existsSync(BRAIN_SOURCES_DIR)) {
+      fs.mkdirSync(BRAIN_SOURCES_DIR, { recursive: true });
+    }
+
+    const sourcePath = this._sourcePath(relativePath);
+    const content = [
+      `# Source: ${path.basename(relativePath)}`,
+      '',
+      `**Type:** ${metadata?.fileType || 'unknown'}`,
+      `**Extracted:** ${now()}`,
+      `**Size:** ${metadata?.wordCount || 'unknown'} words`,
+      `**Original:** ${relativePath}`,
+      '',
+      '---',
+      '',
+      text,
+    ].join('\n');
+
+    fs.writeFileSync(sourcePath, content, 'utf-8');
+    return sourcePath;
+  },
+
+  populate(folderPath) {
+    const manifest = this.scanFolder(folderPath);
+    if (manifest.error) return manifest;
+
+    if (manifest.total_supported === 0) {
+      return { warning: 'No supported files found.', manifest };
+    }
+
+    const results = {
+      extracted: [],
+      claude_read: [],
+      errors: [],
+      manifest,
+    };
+
+    for (const file of manifest.files) {
+      const extraction = this.extractText(file.path, file.type);
+
+      if (extraction.type === 'error') {
+        results.errors.push({ file: file.relative_path, error: extraction.error });
+        continue;
+      }
+
+      if (extraction.type === 'claude-read') {
+        this.saveSource(file.relative_path, `[This file requires Claude to read directly using the Read tool]\n\nOriginal file: ${file.path}`, {
+          fileType: extraction.fileType,
+          wordCount: 0,
+        });
+        results.claude_read.push({
+          file: file.relative_path,
+          path: file.path,
+          fileType: extraction.fileType,
+          url: extraction.url || null,
+        });
+        continue;
+      }
+
+      const sourcePath = this.saveSource(file.relative_path, extraction.text, {
+        fileType: extraction.fileType,
+        wordCount: extraction.wordCount,
+      });
+      results.extracted.push({
+        file: file.relative_path,
+        source: sourcePath,
+        wordCount: extraction.wordCount,
+        fileType: extraction.fileType,
+      });
+    }
+
+    const project = loadState('project') || {};
+    project.docs_ingested = {
+      folder: folderPath,
+      files_processed: results.extracted.length + results.claude_read.length,
+      files_errored: results.errors.length,
+      timestamp: now(),
+    };
+    saveState('project', project);
+
+    return results;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // 10. Hook helpers
 // ---------------------------------------------------------------------------
 
