@@ -1659,7 +1659,196 @@ const SecurityScanner = {
     }
   },
 
-  // --- Tasks 5-6 will add more methods here ---
+  runDependencyAudit() {
+    const findings = [];
+    const toolsUsed = [];
+    const toolsErrored = [];
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const projectRoot = process.cwd();
+
+    if (fileExists(path.join(projectRoot, 'package-lock.json'))) {
+      const result = this._execOrError('npm audit --json 2>/dev/null', { timeout: 60000 });
+      if (result.output) {
+        toolsUsed.push('npm_audit');
+        try {
+          const data = JSON.parse(result.output);
+          const vulns = data.vulnerabilities || {};
+          for (const [name, info] of Object.entries(vulns)) {
+            findings.push({
+              id: this._genFindingId(), tool: 'npm_audit', rule: `npm:${name}`,
+              severity: info.severity === 'critical' ? 'critical' : info.severity === 'high' ? 'high' : info.severity === 'moderate' ? 'medium' : 'low',
+              file: 'package-lock.json', line: 0,
+              message: `${name}@${info.range || 'unknown'}: ${info.title || info.via?.[0]?.title || 'vulnerability'}`,
+              cwe: info.via?.[0]?.cwe?.[0] || null, owasp: null, status: 'open', found_at: now(), sprint_id: sprintId,
+            });
+          }
+        } catch { toolsErrored.push('npm_audit'); }
+      } else if (result.error) { toolsErrored.push('npm_audit'); }
+    }
+
+    if (fileExists(path.join(projectRoot, 'yarn.lock'))) {
+      const result = this._execOrError('yarn audit --json 2>/dev/null', { timeout: 60000 });
+      if (result.output) {
+        toolsUsed.push('yarn_audit');
+        try {
+          const lines = result.output.trim().split('\n');
+          for (const line of lines) {
+            const entry = JSON.parse(line);
+            if (entry.type === 'auditAdvisory') {
+              const adv = entry.data?.advisory || {};
+              findings.push({
+                id: this._genFindingId(), tool: 'yarn_audit', rule: `yarn:${adv.module_name || 'unknown'}`,
+                severity: adv.severity === 'critical' ? 'critical' : adv.severity === 'high' ? 'high' : adv.severity === 'moderate' ? 'medium' : 'low',
+                file: 'yarn.lock', line: 0, message: adv.title || 'vulnerability',
+                cwe: adv.cwe || null, owasp: null, status: 'open', found_at: now(), sprint_id: sprintId,
+              });
+            }
+          }
+        } catch { toolsErrored.push('yarn_audit'); }
+      }
+    }
+
+    if (fileExists(path.join(projectRoot, 'pnpm-lock.yaml'))) {
+      const result = this._execOrError('pnpm audit --json 2>/dev/null', { timeout: 60000 });
+      if (result.output) {
+        toolsUsed.push('pnpm_audit');
+        try {
+          const data = JSON.parse(result.output);
+          const advisories = data.advisories || {};
+          for (const [, adv] of Object.entries(advisories)) {
+            findings.push({
+              id: this._genFindingId(), tool: 'pnpm_audit', rule: `pnpm:${adv.module_name || 'unknown'}`,
+              severity: adv.severity === 'critical' ? 'critical' : adv.severity === 'high' ? 'high' : adv.severity === 'moderate' ? 'medium' : 'low',
+              file: 'pnpm-lock.yaml', line: 0, message: adv.title || 'vulnerability',
+              cwe: adv.cwe || null, owasp: null, status: 'open', found_at: now(), sprint_id: sprintId,
+            });
+          }
+        } catch { toolsErrored.push('pnpm_audit'); }
+      }
+    }
+
+    if (fileExists(path.join(projectRoot, 'requirements.txt')) || fileExists(path.join(projectRoot, 'Pipfile')) || fileExists(path.join(projectRoot, 'pyproject.toml'))) {
+      const state = this._loadScanState();
+      if (state.tools?.pip_audit?.available) {
+        const result = this._execOrError('pip-audit --format json 2>/dev/null', { timeout: 60000 });
+        if (result.output) {
+          toolsUsed.push('pip_audit');
+          try {
+            const data = JSON.parse(result.output);
+            for (const dep of (data.dependencies || [])) {
+              for (const vuln of (dep.vulns || [])) {
+                findings.push({
+                  id: this._genFindingId(), tool: 'pip_audit', rule: `pip:${vuln.id || 'unknown'}`,
+                  severity: 'high', file: 'requirements.txt', line: 0,
+                  message: `${dep.name}@${dep.version}: ${vuln.description || vuln.id}`,
+                  cwe: null, owasp: null, status: 'open', found_at: now(), sprint_id: sprintId,
+                });
+              }
+            }
+          } catch { toolsErrored.push('pip_audit'); }
+        }
+      }
+    }
+
+    if (fileExists(path.join(projectRoot, 'go.sum'))) {
+      const state = this._loadScanState();
+      if (state.tools?.govulncheck?.available) {
+        const result = this._execOrError('govulncheck -json ./... 2>/dev/null', { timeout: 60000 });
+        if (result.output) {
+          toolsUsed.push('govulncheck');
+          try {
+            const lines = result.output.trim().split('\n');
+            for (const line of lines) {
+              const entry = JSON.parse(line);
+              if (entry.finding) {
+                findings.push({
+                  id: this._genFindingId(), tool: 'govulncheck', rule: `go:${entry.finding.osv || 'unknown'}`,
+                  severity: 'high', file: 'go.sum', line: 0,
+                  message: entry.finding.osv || 'Go vulnerability',
+                  cwe: null, owasp: null, status: 'open', found_at: now(), sprint_id: sprintId,
+                });
+              }
+            }
+          } catch { toolsErrored.push('govulncheck'); }
+        }
+      }
+    }
+
+    return { findings, toolsUsed, toolsErrored };
+  },
+
+  runZap(targetUrl) {
+    const state = this._loadScanState();
+    if (!state.tools?.zap?.available) {
+      return { findings: [], error: 'ZAP not available (install Docker or zap.sh)', skipped: true };
+    }
+    const reportPath = path.join(STATE_DIR, 'zap-report.json');
+    const method = state.tools.zap.method;
+    let result;
+    if (method === 'docker') {
+      result = this._execOrError(
+        `docker run --rm --network host -v ${STATE_DIR}:/zap/wrk ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t ${targetUrl} -J zap-report.json`,
+        { timeout: 600000 }
+      );
+    } else {
+      result = this._execOrError(
+        `zap.sh -cmd -quickurl ${targetUrl} -quickout ${reportPath} -quickprogress`,
+        { timeout: 600000 }
+      );
+    }
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const findings = [];
+    if (fileExists(reportPath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+        const alerts = data.site?.[0]?.alerts || data.alerts || [];
+        for (const alert of alerts) {
+          const riskMap = { '3': 'critical', '2': 'high', '1': 'medium', '0': 'low' };
+          findings.push({
+            id: this._genFindingId(), tool: 'zap', rule: `zap:${alert.pluginid || alert.alertRef || 'unknown'}`,
+            severity: riskMap[String(alert.riskcode)] || 'medium',
+            file: alert.url || targetUrl, line: 0,
+            message: alert.name || alert.alert || 'ZAP finding',
+            cwe: alert.cweid ? `CWE-${alert.cweid}` : null, owasp: null,
+            status: 'open', found_at: now(), sprint_id: sprintId,
+          });
+        }
+      } catch {}
+      try { fs.unlinkSync(reportPath); } catch {}
+    }
+    return { findings, error: result.error, skipped: false };
+  },
+
+  scanRuntime(targetUrl) {
+    const zapResult = this.runZap(targetUrl);
+    const summary = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of zapResult.findings) { summary[f.severity]++; }
+    const posture = this._getPosture();
+    const thresholds = POSTURE_THRESHOLDS[posture] || POSTURE_THRESHOLDS.moderate;
+    let blocked = false;
+    for (const sev of SEVERITY_LEVELS) {
+      if (summary[sev] > 0 && thresholds[sev] === 'block') { blocked = true; break; }
+    }
+    const state = this._loadScanState();
+    state.findings = this._mergeFindings(state.findings, zapResult.findings);
+    state.last_scan = {
+      type: 'runtime', timestamp: now(),
+      tools_used: zapResult.skipped ? [] : ['zap'],
+      tools_errored: zapResult.error && !zapResult.skipped ? ['zap'] : [],
+      summary,
+    };
+    state.scan_history.push({
+      timestamp: now(), type: 'runtime', files_scanned: null,
+      findings_count: zapResult.findings.length, tools_used: zapResult.skipped ? [] : ['zap'],
+    });
+    if (state.scan_history.length > 50) { state.scan_history = state.scan_history.slice(-50); }
+    this._saveScanState(state);
+    return { findings: zapResult.findings, summary, blocked, posture, error: zapResult.error };
+  },
+
+  // --- Task 6 will add more methods here ---
 };
 
 // ---------------------------------------------------------------------------
