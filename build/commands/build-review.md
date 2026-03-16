@@ -34,6 +34,29 @@ Orchestrator loads: `governance/core-policies.md`, `governance/coding-rules.md`,
    - Score: 1-5 on each dimension
    - Findings: must-fix, should-fix, nit
 
+### Automated Security Scan
+
+Before dispatching the security-reviewer agent:
+
+1. Run `build-tools.cjs scan project` — full SAST + dependency audit
+2. Read scan results from `build-tools.cjs scan report`
+3. Include findings in the security-reviewer agent's context pack:
+
+```
+## Scan Findings
+The following vulnerabilities were detected by automated scanning tools:
+
+{findings from scan report, formatted as table}
+
+Cross-reference these findings with your manual code review. Flag any that the
+scanners missed. Assess whether scanner findings are true positives or false positives.
+```
+
+The security-reviewer now has structured scan data alongside the code. It should:
+- Confirm or dispute each automated finding
+- Identify vulnerabilities the scanners missed
+- Recommend specific fixes for confirmed findings
+
 3. **Spawn Security Reviewer Agent** (isolated)
    - `Agent(isolation: "worktree")`
    - Prompt preamble: *"You are auditing code you have never seen before. Assume every input is hostile. You do not know what the author intended — only what the code does. Your job is to find vulnerabilities, not to confirm the code is secure."*
