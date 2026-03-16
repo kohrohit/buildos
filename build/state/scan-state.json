@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "semgrep": {
+      "available": false,
+      "version": null
+    },
+    "sonar_scanner": {
+      "available": false,
+      "version": null
+    },
+    "zap": {
+      "available": true,
+      "method": "docker",
+      "version": null
+    },
+    "npm_audit": {
+      "available": true,
+      "version": null
+    },
+    "yarn_audit": {
+      "available": true,
+      "version": null
+    },
+    "pnpm_audit": {
+      "available": false,
+      "version": null
+    },
+    "pip_audit": {
+      "available": true,
+      "version": null
+    },
+    "govulncheck": {
+      "available": false,
+      "version": null
+    }
+  },
+  "posture_source": "current-project.json",
+  "sonarqube_source": "current-project.json",
+  "last_scan": null,
+  "findings": [],
+  "scan_history": []
+}
