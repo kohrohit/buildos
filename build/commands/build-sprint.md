@@ -50,6 +50,30 @@ Also load: `state/roadmap.json`, `state/sprint-state.json`, `state/learned-patte
 - Task types must respect coding rules
 - Acceptance criteria must include governance compliance
 
+### Task Dependency and Scope Fields
+
+Each task in `task-state.json` MUST include:
+
+- `depends_on`: Array of task IDs that must complete before this task can start. Empty array `[]` if no dependencies. Used by `/build-execute --parallel` for DAG construction.
+- `file_scope`: Array of file paths this task will create or modify. Used for tier classification and merge conflict prevention in parallel execution.
+
+Example:
+```json
+{
+  "id": "T-abc123",
+  "title": "Add user authentication",
+  "status": "pending",
+  "depends_on": ["T-def456"],
+  "file_scope": ["src/middleware/auth.ts", "src/middleware/auth.test.ts"],
+  "description": "..."
+}
+```
+
+The planner should determine dependencies by analyzing:
+1. Data flow: if task B reads from a model created by task A, B depends on A
+2. Interface contracts: if task B imports a type defined by task A, B depends on A
+3. File overlap: if two tasks modify the same file, one must depend on the other
+
 ## State Updates
 - `sprint-state.json`: full sprint definition with all fields
 - `task-state.json`: all sprint tasks with "pending" status
