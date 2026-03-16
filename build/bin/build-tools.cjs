@@ -2565,6 +2565,78 @@ const Commands = {
     }
   },
 
+  scan(args) {
+    const sub = args[0];
+    const validSubs = ['detect', 'files', 'project', 'runtime', 'report', 'configure', 'sonarqube', 'history', 'dismiss'];
+    if (!sub || !validSubs.includes(sub)) {
+      console.error('Usage: scan <detect|files|project|runtime|report|configure|sonarqube|history|dismiss>');
+      process.exit(1);
+    }
+    if (sub === 'detect') {
+      const tools = SecurityScanner.detectTools();
+      for (const [name, info] of Object.entries(tools)) {
+        const status = info.available ? '✓' : '✗';
+        const version = info.version ? ` ${info.version}` : '';
+        const method = info.method ? ` (${info.method})` : '';
+        console.log(`  ${status} ${name}${version}${method}`);
+      }
+    } else if (sub === 'files') {
+      const files = args.slice(1);
+      if (files.length === 0) { console.error('Usage: scan files <file1> [file2...]'); process.exit(1); }
+      const result = SecurityScanner.scanFiles(files);
+      console.log(JSON.stringify(result, null, 2));
+      if (result.blocked) process.exit(1);
+    } else if (sub === 'project') {
+      const sonarOnly = args.includes('--sonar-only');
+      const semgrepOnly = args.includes('--semgrep-only');
+      if (sonarOnly) console.log('Running SonarQube scan only...');
+      else if (semgrepOnly) console.log('Running Semgrep scan only...');
+      else console.log('Running full project scan...');
+      const result = SecurityScanner.scanProject({ sonarOnly, semgrepOnly });
+      console.log(JSON.stringify({
+        summary: result.summary, blocked: result.blocked, posture: result.posture,
+        tools_used: result.toolsUsed, tools_errored: result.toolsErrored, findings_count: result.findings.length,
+      }, null, 2));
+      if (result.blocked) process.exit(1);
+    } else if (sub === 'runtime') {
+      const url = args[1];
+      if (!url) { console.error('Usage: scan runtime <target-url>'); process.exit(1); }
+      console.log(`Running DAST scan against ${url}...`);
+      const result = SecurityScanner.scanRuntime(url);
+      console.log(JSON.stringify({
+        summary: result.summary, blocked: result.blocked, posture: result.posture, findings_count: result.findings.length,
+      }, null, 2));
+      if (result.blocked) process.exit(1);
+    } else if (sub === 'report') {
+      console.log(SecurityScanner.getReport());
+    } else if (sub === 'configure') {
+      const posture = args[1];
+      if (!posture) { console.error('Usage: scan configure <strict|moderate|permissive>'); process.exit(1); }
+      const result = SecurityScanner.configure(posture);
+      if (result.error) { console.error(result.error); process.exit(1); }
+      console.log(`Security posture set to: ${posture}`);
+    } else if (sub === 'sonarqube') {
+      const url = args[1];
+      const projectKey = args[2];
+      if (!url || !projectKey) { console.error('Usage: scan sonarqube <server-url> <project-key>'); process.exit(1); }
+      SecurityScanner.configureSonarQube(url, projectKey);
+      console.log(`SonarQube configured: ${url} / ${projectKey}`);
+      console.log('Token will be read from env var: SONAR_TOKEN');
+    } else if (sub === 'history') {
+      const state = SecurityScanner._loadScanState();
+      console.log(JSON.stringify(state.scan_history, null, 2));
+    } else if (sub === 'dismiss') {
+      const findingId = args[1];
+      const isFP = args.includes('--false-positive');
+      const reasonParts = args.slice(2).filter(a => a !== '--false-positive');
+      const reason = reasonParts.join(' ');
+      if (!findingId || !reason) { console.error('Usage: scan dismiss <finding-id> [--false-positive] <reason>'); process.exit(1); }
+      const result = SecurityScanner.dismiss(findingId, reason, isFP);
+      if (result.error) { console.error(result.error); process.exit(1); }
+      console.log(`Finding ${findingId} ${isFP ? 'marked as false positive' : 'dismissed'}: ${reason}`);
+    }
+  },
+
   merge(args) {
     const sub = args[0];
     if (sub !== 'validate') {
@@ -2663,6 +2735,7 @@ function main() {
     console.log('  validate [target]            Validate state files');
     console.log('  dag <build|tier|recalculate> DAG operations for parallel execution');
     console.log('  ledger <init|read|update|finalize|cleanup>  Execution ledger operations');
+    console.log('  scan <detect|files|project|runtime|report|configure|sonarqube|history|dismiss>  Security scanning');
     console.log('  merge validate <wave> [reports.json]        Validate file conflicts');
     console.log('  hook <hook-name>             Run hook handler');
     process.exit(0);
