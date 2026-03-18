@@ -13,6 +13,22 @@
       "method": "docker",
       "version": null
     },
+    "codeql": {
+      "available": false,
+      "version": null
+    },
+    "trivy": {
+      "available": false,
+      "version": null
+    },
+    "gitleaks": {
+      "available": false,
+      "version": null
+    },
+    "bearer": {
+      "available": false,
+      "version": null
+    },
     "npm_audit": {
       "available": true,
       "version": null

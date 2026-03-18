@@ -1483,6 +1483,30 @@ const SecurityScanner = {
       version: null,
     };
 
+    const codeqlVer = this._exec('codeql version 2>&1');
+    tools.codeql = {
+      available: !!codeqlVer && codeqlVer.includes('CodeQL'),
+      version: codeqlVer ? (codeqlVer.match(/(\d+\.\d+\.\d+)/)?.[1] || null) : null,
+    };
+
+    const trivyVer = this._exec('trivy --version 2>&1');
+    tools.trivy = {
+      available: !!trivyVer && (trivyVer.includes('Version') || trivyVer.includes('trivy')),
+      version: trivyVer ? (trivyVer.match(/Version:\s*([\d.]+)/)?.[1] || trivyVer.match(/(\d+\.\d+\.\d+)/)?.[1] || null) : null,
+    };
+
+    const gitleaksVer = this._exec('gitleaks version 2>&1');
+    tools.gitleaks = {
+      available: !!gitleaksVer && /\d+\.\d+/.test(gitleaksVer),
+      version: gitleaksVer ? (gitleaksVer.match(/(\d+\.\d+\.\d+)/)?.[1] || gitleaksVer.trim() || null) : null,
+    };
+
+    const bearerVer = this._exec('bearer version 2>&1');
+    tools.bearer = {
+      available: !!bearerVer && (bearerVer.includes('bearer') || /\d+\.\d+/.test(bearerVer)),
+      version: bearerVer ? (bearerVer.match(/(\d+\.\d+\.\d+)/)?.[1] || null) : null,
+    };
+
     tools.npm_audit = { available: !!this._exec('npm --version'), version: null };
     tools.yarn_audit = { available: !!this._exec('yarn --version'), version: null };
     tools.pnpm_audit = { available: !!this._exec('pnpm --version'), version: null };
@@ -1686,6 +1710,259 @@ const SecurityScanner = {
     }
   },
 
+  // ---- CodeQL — deep semantic SAST analysis ----
+
+  _mapCodeqlSeverity(severity) {
+    const map = { error: 'critical', warning: 'high', note: 'medium', recommendation: 'low' };
+    return map[(severity || '').toLowerCase()] || 'medium';
+  },
+
+  runCodeQL(target) {
+    const state = this._loadScanState();
+    if (!state.tools?.codeql?.available) {
+      return { findings: [], error: 'codeql not installed (https://github.com/github/codeql-cli-binaries)', skipped: true };
+    }
+    const dbPath = path.join(STATE_DIR, 'codeql-db');
+    const resultsPath = path.join(STATE_DIR, 'codeql-results.sarif');
+    // Detect language from project files
+    const projectRoot = target || process.cwd();
+    let lang = 'javascript';
+    if (fileExists(path.join(projectRoot, 'go.mod'))) lang = 'go';
+    else if (fileExists(path.join(projectRoot, 'pom.xml')) || fileExists(path.join(projectRoot, 'build.gradle'))) lang = 'java';
+    else if (fileExists(path.join(projectRoot, 'requirements.txt')) || fileExists(path.join(projectRoot, 'pyproject.toml'))) lang = 'python';
+    else if (fileExists(path.join(projectRoot, 'Gemfile'))) lang = 'ruby';
+    else if (fileExists(path.join(projectRoot, 'Package.swift'))) lang = 'swift';
+    // Create database
+    const createResult = this._execOrError(
+      `codeql database create "${dbPath}" --language=${lang} --source-root="${projectRoot}" --overwrite`,
+      { timeout: 300000 }
+    );
+    if (createResult.error && !createResult.output) {
+      return { findings: [], error: `codeql database create failed: ${createResult.error}`, skipped: false };
+    }
+    // Run analysis
+    const analyzeResult = this._execOrError(
+      `codeql database analyze "${dbPath}" --format=sarif-latest --output="${resultsPath}" --threads=0`,
+      { timeout: 600000 }
+    );
+    if (analyzeResult.error && !analyzeResult.output) {
+      try { fs.rmSync(dbPath, { recursive: true, force: true }); } catch {}
+      return { findings: [], error: `codeql analyze failed: ${analyzeResult.error}`, skipped: false };
+    }
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const findings = [];
+    if (fileExists(resultsPath)) {
+      try {
+        const sarif = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+        const runs = sarif.runs || [];
+        for (const run of runs) {
+          for (const result of (run.results || [])) {
+            const loc = result.locations?.[0]?.physicalLocation;
+            findings.push({
+              id: this._genFindingId(),
+              tool: 'codeql',
+              rule: result.ruleId || 'unknown',
+              severity: this._mapCodeqlSeverity(result.level),
+              file: loc?.artifactLocation?.uri || '',
+              line: loc?.region?.startLine || 0,
+              message: result.message?.text || '',
+              cwe: result.properties?.['cwe-external/cwe'?.[0]] || result.ruleId?.match(/cwe-(\d+)/i)?.[0] || null,
+              owasp: null,
+              status: 'open',
+              found_at: now(),
+              sprint_id: sprintId,
+            });
+          }
+        }
+      } catch {}
+      try { fs.unlinkSync(resultsPath); } catch {}
+    }
+    try { fs.rmSync(dbPath, { recursive: true, force: true }); } catch {}
+    return { findings, error: null, skipped: false };
+  },
+
+  // ---- Trivy — dependency & container vulnerability scanning ----
+
+  _mapTrivySeverity(severity) {
+    const map = { CRITICAL: 'critical', HIGH: 'high', MEDIUM: 'medium', LOW: 'low', UNKNOWN: 'low' };
+    return map[(severity || '').toUpperCase()] || 'low';
+  },
+
+  runTrivy(target) {
+    const state = this._loadScanState();
+    if (!state.tools?.trivy?.available) {
+      return { findings: [], error: 'trivy not installed (https://aquasecurity.github.io/trivy)', skipped: true };
+    }
+    const projectRoot = target || process.cwd();
+    const resultsPath = path.join(STATE_DIR, 'trivy-results.json');
+    // Scan filesystem for vulnerabilities (covers deps, misconfigs, secrets)
+    const result = this._execOrError(
+      `trivy fs --format json --output "${resultsPath}" --scanners vuln,misconfig "${projectRoot}"`,
+      { timeout: 180000 }
+    );
+    if (result.error && !result.output && !fileExists(resultsPath)) {
+      return { findings: [], error: `trivy scan failed: ${result.error}`, skipped: false };
+    }
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const findings = [];
+    if (fileExists(resultsPath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+        const results = data.Results || [];
+        for (const target of results) {
+          // Vulnerability findings
+          for (const vuln of (target.Vulnerabilities || [])) {
+            findings.push({
+              id: this._genFindingId(),
+              tool: 'trivy',
+              rule: `trivy:${vuln.VulnerabilityID || 'unknown'}`,
+              severity: this._mapTrivySeverity(vuln.Severity),
+              file: target.Target || '',
+              line: 0,
+              message: `${vuln.PkgName || ''}@${vuln.InstalledVersion || ''}: ${vuln.Title || vuln.VulnerabilityID || 'vulnerability'}${vuln.FixedVersion ? ` (fix: ${vuln.FixedVersion})` : ''}`,
+              cwe: vuln.CweIDs?.[0] ? `CWE-${vuln.CweIDs[0]}` : null,
+              owasp: null,
+              status: 'open',
+              found_at: now(),
+              sprint_id: sprintId,
+            });
+          }
+          // Misconfiguration findings
+          for (const mc of (target.Misconfigurations || [])) {
+            findings.push({
+              id: this._genFindingId(),
+              tool: 'trivy',
+              rule: `trivy:${mc.ID || mc.AVDID || 'misconfig'}`,
+              severity: this._mapTrivySeverity(mc.Severity),
+              file: target.Target || '',
+              line: mc.CauseMetadata?.StartLine || 0,
+              message: mc.Title || mc.Message || 'misconfiguration',
+              cwe: null,
+              owasp: null,
+              status: 'open',
+              found_at: now(),
+              sprint_id: sprintId,
+            });
+          }
+        }
+      } catch {}
+      try { fs.unlinkSync(resultsPath); } catch {}
+    }
+    return { findings, error: null, skipped: false };
+  },
+
+  // ---- Gitleaks — secret detection ----
+
+  _mapGitleaksSeverity() {
+    // All secret leaks are high severity by default
+    return 'high';
+  },
+
+  runGitleaks(target) {
+    const state = this._loadScanState();
+    if (!state.tools?.gitleaks?.available) {
+      return { findings: [], error: 'gitleaks not installed (https://github.com/gitleaks/gitleaks)', skipped: true };
+    }
+    const projectRoot = target || process.cwd();
+    const resultsPath = path.join(STATE_DIR, 'gitleaks-results.json');
+    // Scan directory (not git history) for secrets
+    const result = this._execOrError(
+      `gitleaks detect --source="${projectRoot}" --report-format=json --report-path="${resultsPath}" --no-git --exit-code 0`,
+      { timeout: 120000 }
+    );
+    if (result.error && !fileExists(resultsPath)) {
+      // Also try with git history if no-git fails
+      const gitResult = this._execOrError(
+        `gitleaks detect --source="${projectRoot}" --report-format=json --report-path="${resultsPath}" --exit-code 0`,
+        { timeout: 180000 }
+      );
+      if (gitResult.error && !fileExists(resultsPath)) {
+        return { findings: [], error: `gitleaks scan failed: ${result.error}`, skipped: false };
+      }
+    }
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const findings = [];
+    if (fileExists(resultsPath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+        for (const leak of (Array.isArray(data) ? data : [])) {
+          findings.push({
+            id: this._genFindingId(),
+            tool: 'gitleaks',
+            rule: `gitleaks:${leak.RuleID || 'secret'}`,
+            severity: leak.RuleID?.includes('private-key') ? 'critical' : 'high',
+            file: leak.File || '',
+            line: leak.StartLine || 0,
+            message: `Secret detected: ${leak.Description || leak.RuleID || 'potential secret'}${leak.Match ? ` (match: ${leak.Match.substring(0, 20)}...)` : ''}`,
+            cwe: 'CWE-798',
+            owasp: 'A07:2021',
+            status: 'open',
+            found_at: now(),
+            sprint_id: sprintId,
+          });
+        }
+      } catch {}
+      try { fs.unlinkSync(resultsPath); } catch {}
+    }
+    return { findings, error: null, skipped: false };
+  },
+
+  // ---- Bearer — data flow & privacy analysis ----
+
+  _mapBearerSeverity(severity) {
+    const map = { critical: 'critical', high: 'high', medium: 'medium', low: 'low', warning: 'medium' };
+    return map[(severity || '').toLowerCase()] || 'medium';
+  },
+
+  runBearer(target) {
+    const state = this._loadScanState();
+    if (!state.tools?.bearer?.available) {
+      return { findings: [], error: 'bearer not installed (https://docs.bearer.com/reference/installation)', skipped: true };
+    }
+    const projectRoot = target || process.cwd();
+    const resultsPath = path.join(STATE_DIR, 'bearer-results.json');
+    const result = this._execOrError(
+      `bearer scan "${projectRoot}" --format=json --output="${resultsPath}" --quiet`,
+      { timeout: 300000 }
+    );
+    if (result.error && !fileExists(resultsPath)) {
+      return { findings: [], error: `bearer scan failed: ${result.error}`, skipped: false };
+    }
+    const sprint = loadState('sprint');
+    const sprintId = sprint?.active_sprint?.id || null;
+    const findings = [];
+    if (fileExists(resultsPath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+        // Bearer outputs findings under different categories
+        for (const category of ['sast', 'secrets', 'privacy']) {
+          const items = data[category] || [];
+          for (const item of items) {
+            findings.push({
+              id: this._genFindingId(),
+              tool: 'bearer',
+              rule: `bearer:${item.rule_id || item.id || category}`,
+              severity: this._mapBearerSeverity(item.severity),
+              file: item.filename || item.file || '',
+              line: item.line_number || item.start_line || 0,
+              message: `[${category}] ${item.title || item.description || item.rule_id || 'finding'}`,
+              cwe: item.cwe_ids?.[0] ? `CWE-${item.cwe_ids[0]}` : null,
+              owasp: item.owasp?.[0] || null,
+              status: 'open',
+              found_at: now(),
+              sprint_id: sprintId,
+            });
+          }
+        }
+      } catch {}
+      try { fs.unlinkSync(resultsPath); } catch {}
+    }
+    return { findings, error: null, skipped: false };
+  },
+
   runDependencyAudit() {
     const findings = [];
     const toolsUsed = [];
@@ -1880,26 +2157,59 @@ const SecurityScanner = {
     const toolsUsed = [];
     const toolsErrored = [];
     let allFindings = [];
+    const runAll = !opts.sonarOnly && !opts.semgrepOnly && !opts.codeqlOnly && !opts.trivyOnly && !opts.gitleaksOnly && !opts.bearerOnly;
 
-    if (!opts.sonarOnly) {
+    // --- SAST ---
+    if (runAll || opts.semgrepOnly) {
       const semgrepResult = this.runSemgrep('.', SEMGREP_RULESETS.full, 120000);
       if (!semgrepResult.skipped) toolsUsed.push('semgrep');
       if (semgrepResult.error && !semgrepResult.skipped) toolsErrored.push('semgrep');
       allFindings = allFindings.concat(semgrepResult.findings);
     }
 
-    if (!opts.semgrepOnly) {
+    if (runAll || opts.sonarOnly) {
       const sonarResult = this.runSonarQube();
       if (!sonarResult.skipped) toolsUsed.push('sonar_scanner');
       if (sonarResult.error && !sonarResult.skipped) toolsErrored.push('sonar_scanner');
       allFindings = allFindings.concat(sonarResult.findings);
     }
 
-    if (!opts.sonarOnly && !opts.semgrepOnly) {
+    if (runAll || opts.codeqlOnly) {
+      const codeqlResult = this.runCodeQL();
+      if (!codeqlResult.skipped) toolsUsed.push('codeql');
+      if (codeqlResult.error && !codeqlResult.skipped) toolsErrored.push('codeql');
+      allFindings = allFindings.concat(codeqlResult.findings);
+    }
+
+    // --- Dependency / Container scan ---
+    if (runAll || opts.trivyOnly) {
+      const trivyResult = this.runTrivy();
+      if (!trivyResult.skipped) toolsUsed.push('trivy');
+      if (trivyResult.error && !trivyResult.skipped) toolsErrored.push('trivy');
+      allFindings = allFindings.concat(trivyResult.findings);
+    }
+
+    if (runAll) {
       const depResult = this.runDependencyAudit();
       toolsUsed.push(...depResult.toolsUsed);
       toolsErrored.push(...depResult.toolsErrored);
       allFindings = allFindings.concat(depResult.findings);
+    }
+
+    // --- Secret detection ---
+    if (runAll || opts.gitleaksOnly) {
+      const gitleaksResult = this.runGitleaks();
+      if (!gitleaksResult.skipped) toolsUsed.push('gitleaks');
+      if (gitleaksResult.error && !gitleaksResult.skipped) toolsErrored.push('gitleaks');
+      allFindings = allFindings.concat(gitleaksResult.findings);
+    }
+
+    // --- Data flow / Privacy ---
+    if (runAll || opts.bearerOnly) {
+      const bearerResult = this.runBearer();
+      if (!bearerResult.skipped) toolsUsed.push('bearer');
+      if (bearerResult.error && !bearerResult.skipped) toolsErrored.push('bearer');
+      allFindings = allFindings.concat(bearerResult.findings);
     }
 
     allFindings = this._deduplicateFindings(allFindings);
@@ -2901,10 +3211,14 @@ const Commands = {
     } else if (sub === 'project') {
       const sonarOnly = args.includes('--sonar-only');
       const semgrepOnly = args.includes('--semgrep-only');
-      if (sonarOnly) console.log('Running SonarQube scan only...');
-      else if (semgrepOnly) console.log('Running Semgrep scan only...');
+      const codeqlOnly = args.includes('--codeql-only');
+      const trivyOnly = args.includes('--trivy-only');
+      const gitleaksOnly = args.includes('--gitleaks-only');
+      const bearerOnly = args.includes('--bearer-only');
+      const toolName = sonarOnly ? 'SonarQube' : semgrepOnly ? 'Semgrep' : codeqlOnly ? 'CodeQL' : trivyOnly ? 'Trivy' : gitleaksOnly ? 'Gitleaks' : bearerOnly ? 'Bearer' : null;
+      if (toolName) console.log(`Running ${toolName} scan only...`);
       else console.log('Running full project scan...');
-      const result = SecurityScanner.scanProject({ sonarOnly, semgrepOnly });
+      const result = SecurityScanner.scanProject({ sonarOnly, semgrepOnly, codeqlOnly, trivyOnly, gitleaksOnly, bearerOnly });
       console.log(JSON.stringify({
         summary: result.summary, blocked: result.blocked, posture: result.posture,
         tools_used: result.toolsUsed, tools_errored: result.toolsErrored, findings_count: result.findings.length,
