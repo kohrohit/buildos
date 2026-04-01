@@ -114,6 +114,31 @@ After initializing the project brain, configure security scanning:
 3. **Detect tools** — call `build-tools.cjs scan detect` and show results.
    Suggest installing missing tools if needed.
 
+### OpenSpace Integration (Optional)
+
+After security configuration, prompt the user:
+
+```
+Optional: OpenSpace Skill Evolution Engine
+  OpenSpace captures reusable skills from your sprint executions,
+  auto-repairs them when tools/APIs change, and optionally shares
+  them across projects via a cloud community.
+
+  Benefits: Repeated tasks get cheaper each sprint (4.2x perf, 46% fewer tokens)
+  Requirements: Python 3.12+, pip install openspace-engine
+  Impact: Zero if disabled — BuildOS works exactly the same without it
+
+  Enable OpenSpace? (y/n)
+```
+
+- If **yes**: check prerequisites (Python 3.12+, openspace-engine installed)
+  - If prerequisites pass: set `openspace.enabled: true` in `current-project.json`, create `openspace_skills/`
+  - If prerequisites fail: show installation instructions, set `openspace.enabled: false`, continue init
+- If **no**: set `openspace.enabled: false`, never mention OpenSpace again unless user asks
+- If user doesn't respond or skips: default to **disabled**
+
+See `governance/skills/openspace-integration.md` for full integration details and `commands/build-openspace.md` for management commands.
+
 ## Governance Checks
 - Verify all governance files are present and non-empty
 - Record governance file checksums for drift detection
@@ -130,5 +155,6 @@ BuildOS Initialized
   Governance: {version} ({n} brain files loaded)
   State: All 6 state files created
   Hooks: Active ({n} hooks registered)
+  OpenSpace: {enabled|disabled}
   Ready for: /build-plan
 ```

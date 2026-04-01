@@ -26,7 +26,23 @@ Also load: `state/sprint-state.json`, `state/task-state.json`, `state/context-st
    - Confirm required dependencies (other tasks) are completed
    - Load relevant existing code for context
 
-3. **Execute task**
+3. **OpenSpace skill check** (only if `openspace.enabled: true`)
+   - Search OpenSpace for skills matching the task title and description
+   - If a match is found above `delegation_threshold`:
+     ```
+     OpenSpace skill found: "{skill_name}" (confidence: {score})
+       Description: {skill_description}
+       Applied: {n} times, Success rate: {rate}%
+       
+       Use this skill to assist execution? (y/n/details)
+     ```
+   - If user approves: inject skill content as guidance in execution context
+   - If user declines: execute normally without skill
+   - **Skill content is guidance only — BuildOS governance always overrides**
+   - **Security-sensitive tasks (auth, crypto, PII) are never delegated — skip this step**
+   - If OpenSpace is disabled, skip this step entirely (zero overhead)
+
+4. **Execute task**
    - Follow coding rules strictly (naming, structure, patterns)
    - Respect architecture principles (boundaries, interfaces)
    - Write clean, tested, documented code
@@ -57,7 +73,18 @@ After self-validation and before marking the task complete:
 
 This adds ~1-2 seconds per task. Only runs Semgrep (quick rulesets), not SonarQube.
 
-6. **Generate execution report**
+6. **OpenSpace skill capture** (only if `openspace.enabled: true` and `auto_capture: true`)
+   - After successful task completion, analyze if the work is a reusable pattern
+   - If candidate detected:
+     ```
+     OpenSpace detected a reusable pattern:
+       "{candidate_name}" — {description}
+       Capture as skill? (y/n/edit)
+     ```
+   - Only capture with user approval
+   - If OpenSpace disabled, skip entirely
+
+7. **Generate execution report**
 
 ## Governance Checks
 - Every file edit must be within sprint scope
@@ -81,6 +108,7 @@ Task Executed
   Governance: {pass|warnings}
   Blockers Found: {n}
   Sprint Progress: {completed}/{total} tasks
+  OpenSpace: {skill used|skill captured|disabled}
   Next: /build-execute (more tasks) or /build-verify (validate sprint)
 ```
 

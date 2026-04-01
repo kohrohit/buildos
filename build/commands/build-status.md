@@ -99,4 +99,13 @@ Learning Health
 ├─ Expiring within 14 days: {n}
 ├─ Expired: {n}
 └─ Archived: {n}
+
+OpenSpace: {enabled|disabled}
+  {if enabled:}
+  ├─ Local skills: {n} ({healthy} healthy, {degraded} degraded)
+  ├─ Cloud: {enabled|disabled}
+  ├─ Tasks delegated this sprint: {n}
+  └─ Tokens saved (est.): {n}
+  {if disabled:}
+  └─ Enable with: /build-openspace enable
 ```

@@ -45,7 +45,23 @@ Also load: `state/sprint-state.json`, `state/task-state.json`, `state/learned-pa
    - Check for duplicates: if >80% semantic overlap with existing pattern, reinforce instead of creating new
    - Increment `times_applied` for reinforced patterns via `PatternManager.reinforcePattern()`
 
-6. **Refresh context state**
+6. **OpenSpace skill extraction** (only if `openspace.enabled: true`)
+   - Analyze completed sprint for reusable multi-task patterns
+   - For each candidate, prompt user:
+     ```
+     OpenSpace: Capture sprint pattern as skill?
+       Name: "{skill_name}"
+       Description: {what it does}
+       Based on: Tasks {task_ids}
+       Confidence: {score}
+       
+       Capture? (y/n/edit)
+     ```
+   - Only save with explicit user approval
+   - Skills stored locally in `openspace_skills/` — not uploaded to cloud
+   - If OpenSpace disabled, skip this step entirely
+
+7. **Refresh context state**
    - Update active_summaries with new sprint summary
    - Log compression in compression_log
    - Update freshness_check_at
@@ -75,5 +91,6 @@ Learning Recorded
   Summary: compressed to {n} tokens
   Context Budget: {used}/{max}
   Sprints Completed: {total}
+  OpenSpace: {n} skills captured, {n} skipped (or "disabled")
   Next: /build-sprint (next sprint) or /build-status (review state)
 ```
