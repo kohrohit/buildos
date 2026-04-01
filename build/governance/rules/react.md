@@ -31,11 +31,15 @@ src/
 
 ### Component Architecture
 - Default to Server Components; use `'use client'` only when needed
-- Keep components small (< 150 lines including JSX)
-- Separate data fetching from presentation
-- Use composition over prop drilling (React Context, compound components)
+- Keep components small (< 150 lines including JSX) (SRP)
+- Separate data fetching from presentation (SRP)
+- Use composition over prop drilling (React Context, compound components) (DIP)
 - Collocate related files: component, styles, tests, stories
-- One exported component per file (internal helpers are fine)
+- One exported component per file — each component has one responsibility (SRP)
+- Extract hooks for reusable behavior; keep components focused on rendering (SRP)
+- Use render props, HOCs, or composition for behavior variants instead of conditionals (OCP)
+- Props interfaces should be focused per use case, not monolithic (ISP)
+- Custom hooks depend on abstractions (API clients as interfaces), not concrete implementations (DIP)
 
 ### State Management Rules
 - URL state for shareable/bookmarkable state (search params, filters)

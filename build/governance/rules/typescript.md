@@ -30,12 +30,16 @@ src/
 ```
 
 ### Architecture Rules
-- Controllers parse requests and format responses; no business logic
-- Services contain business logic; they accept typed inputs and return typed outputs
-- Repositories handle data access; services never import database clients directly
+- Controllers parse requests and format responses; no business logic (SRP)
+- Services contain business logic; they accept typed inputs and return typed outputs (SRP)
+- Repositories handle data access; services never import database clients directly (DIP)
 - Use Zod schemas for runtime validation at API boundaries
-- Use TypeScript interfaces for compile-time contracts between layers
+- Use TypeScript interfaces for compile-time contracts between layers (DIP)
 - All async functions return `Promise<T>` with explicit return types
+- Define interfaces in the domain/business layer; implement in infrastructure (DIP)
+- Use strategy/factory patterns for behavior variants instead of conditionals (OCP)
+- Keep interfaces focused: one interface per role/capability (ISP)
+- Subtypes must honor base type contracts — no throwing overrides (LSP)
 
 ### Module Boundaries
 - Modules communicate through their public interfaces (exported types and services)

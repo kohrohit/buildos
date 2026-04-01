@@ -30,9 +30,11 @@ Orchestrator loads: `governance/core-policies.md`, `governance/coding-rules.md`,
    - Prompt preamble: *"You are reviewing code you have never seen before. You have no knowledge of how or why it was written. Judge the code solely on what it does, how it does it, and whether it meets the specification. Your job is to find what is wrong, not to confirm what is right."*
    - Pass: stripped spec + acceptance criteria + coding rules + modified file list
    - Agent reads code fresh from filesystem
-   - Review dimensions: readability, SOLID, DRY, naming, complexity, error handling, test coverage, documentation
-   - Score: 1-5 on each dimension
-   - Findings: must-fix, should-fix, nit
+   - **SOLID compliance is scored first — any violation is must-fix and blocks merge**
+   - Review dimensions: **SOLID (SRP, OCP, LSP, ISP, DIP)**, readability, DRY, naming, complexity, error handling, test coverage, documentation
+   - SOLID score: 1-5 (score <4 = automatic CHANGES_REQUESTED)
+   - Score: 1-5 on each other dimension
+   - Findings: must-fix (all SOLID violations), should-fix, nit
 
 ### Automated Security Scan
 
@@ -111,11 +113,14 @@ The security-reviewer now has structured scan data alongside the code. It should
 | Each agent reads code from filesystem | Fresh read, no pre-digested summaries |
 
 ## Governance Checks
+- **SOLID violations block approval (must-fix severity, no exceptions)**
+- **SOLID score <4 from code reviewer = automatic CHANGES_REQUESTED**
 - Security issues at severity HIGH or CRITICAL block approval
 - Architecture violations block approval
 - Code quality below threshold triggers improvement cycle
 - All four reviewer perspectives must be represented
 - Cross-agent escalation: same area flagged by 2+ agents = auto-blocker
+- Override: only if project declares `coding_pattern: <alternative>` in `governance/brain/architecture.md`
 
 ## State Updates
 - `current-project.json`: update last_review
@@ -127,10 +132,11 @@ The security-reviewer now has structured scan data alongside the code. It should
 Deep Review Complete (Independent/Isolated)
   Sprint: {sprint_id}
 
-  Code Review:     {score}/5 — {summary}
-  Security Review: {score}/5 — {summary}
-  Architecture:    {score}/5 — {summary}
-  QA Verification: {score}/5 — {summary}
+  SOLID Compliance: {score}/5 — {S}|{O}|{L}|{I}|{D} individual scores
+  Code Review:      {score}/5 — {summary}
+  Security Review:  {score}/5 — {summary}
+  Architecture:     {score}/5 — {summary}
+  QA Verification:  {score}/5 — {summary}
 
   Cross-Agent Escalations: {n} (areas flagged by multiple agents)
 

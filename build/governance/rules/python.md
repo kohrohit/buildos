@@ -47,11 +47,16 @@ project/
 ```
 
 ### Architecture Rules
-- Views/endpoints handle HTTP concerns only; delegate to services
-- Services contain business logic; they accept and return domain objects, not HTTP types
-- Repositories/selectors encapsulate database queries
+- Views/endpoints handle HTTP concerns only; delegate to services (SRP)
+- Services contain business logic; they accept and return domain objects, not HTTP types (SRP)
+- Repositories/selectors encapsulate database queries (SRP)
 - Pydantic schemas or DRF serializers handle validation at API boundaries
-- Use dependency injection (FastAPI Depends, or manual injection for Django)
+- Use dependency injection (FastAPI Depends, or manual injection for Django) (DIP)
+- Define Protocols/ABCs in the domain layer; implement in infrastructure (DIP)
+- Services depend on Protocol types, never concrete implementations (DIP)
+- Use registry/strategy patterns for behavior variants, not if/elif chains on type (OCP)
+- Keep ABCs/Protocols focused: one concern per interface (ISP)
+- Subclasses must honor base class contracts — no NotImplementedError in overrides (LSP)
 
 ## Naming Conventions
 

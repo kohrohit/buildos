@@ -21,17 +21,22 @@ src/main/java/com/company/project/
 ```
 
 ### Layered Architecture Rules
-- Controllers only handle HTTP concerns: request parsing, response formatting, status codes
-- Services contain all business logic; they never reference HttpServletRequest or ResponseEntity
-- Repositories handle data access only; no business logic in queries
+- Controllers only handle HTTP concerns: request parsing, response formatting, status codes (SRP)
+- Services contain all business logic; they never reference HttpServletRequest or ResponseEntity (SRP)
+- Repositories handle data access only; no business logic in queries (SRP)
 - DTOs are used at API boundaries; entities never leak to controllers
 - Use mappers (MapStruct preferred) for entity-to-DTO conversions
+- Use strategy/template method patterns for varying business rules, not switch statements (OCP)
+- Keep interfaces focused per role: separate read and write contracts when appropriate (ISP)
+- Subclasses must fully honor parent contracts — no UnsupportedOperationException in overrides (LSP)
 
-### Dependency Injection
+### Dependency Injection (DIP)
 - Use constructor injection exclusively (no field injection with @Autowired)
 - Mark injected dependencies as `final`
 - Use `@RequiredArgsConstructor` from Lombok for concise constructors
-- Prefer interface types for injected dependencies
+- **Always inject interface types, never concrete implementations** (DIP — hard governance)
+- Define service interfaces in the domain layer; implementations in infrastructure
+- No service class should directly instantiate its dependencies
 
 ## Naming Conventions
 
