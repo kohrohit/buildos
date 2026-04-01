@@ -84,6 +84,20 @@ Spawn all review agents simultaneously. Each runs in its own worktree with no sh
 - Review dimensions: acceptance criteria coverage, assertion quality, edge cases, pyramid balance
 - Output: coverage gap analysis with risk assessment
 
+### Step 2.5: Spawn E2E Tester Agent (Isolated, Context-Free)
+
+If the application has a UI or web interface, spawn the E2E tester in parallel with the review agents.
+
+- Spawn: `Agent(isolation: "worktree")`
+- Preamble: *"You are testing an application you have never seen before. You do not know how it was built, what framework it uses, or how the code is structured. You know only what the application should do (acceptance criteria) and where it runs (base URL). Your job is to verify every acceptance criterion through the browser using Playwright."*
+- Input: stripped acceptance criteria + known routes + base URL + auth credentials
+- **Does NOT receive**: source code, architecture docs, implementation details, git history
+- Agent scaffolds Playwright project, generates tests from criteria, runs via `npx playwright test`
+- Output: pass/fail per acceptance criterion, screenshots on failure, HTML report
+- See `commands/build-e2e.md` for full workflow and `governance/agents/e2e-tester.md` for agent spec
+
+**Note**: If the app is not running or not a web application, skip this step and log the reason.
+
 ### Step 3: Check Acceptance Criteria
 
 Systematically verify each acceptance criterion defined in the sprint specification.
@@ -112,7 +126,7 @@ Validate that testing meets the sprint's defined thresholds.
 
 Compile all findings from isolated agents into a structured verification report.
 
-- Collect results from all 4 isolated agents.
+- Collect results from all isolated agents (4 review agents + E2E tester if applicable).
 - **Cross-reference**: if 2+ agents flag the same area, auto-escalate severity.
 - **Note disagreements**: areas where agents disagree highlight spots needing human judgment.
 - Use `engine/templates/report-template.md` as the report structure.
@@ -129,6 +143,9 @@ Compile all findings from isolated agents into a structured verification report.
 | Output | Location | Format |
 |--------|----------|--------|
 | Verification report | `state/reports/{sprint-id}-verification.md` | Markdown |
+| E2E test report | `state/reports/{sprint-id}-e2e.md` | Markdown |
+| E2E HTML report | `e2e/reports/html/index.html` | HTML |
+| E2E screenshots | `e2e/reports/results/*.png` | PNG |
 | Updated sprint state | `state/sprint-state.json` | JSON |
 | Code review findings | Embedded in verification report | Markdown |
 | Security review findings | Embedded in verification report | Markdown |
@@ -159,12 +176,16 @@ Compile all findings from isolated agents into a structured verification report.
 | Test coverage below threshold | Reject sprint; create tasks for missing test coverage. |
 | Architecture violation found | Reject sprint; specify the conformance fix required. |
 | Test suite fails to run | Block verification; debug test infrastructure before re-attempting. |
+| E2E smoke tests fail | Block E2E journey tests; app must be functional before testing criteria. |
+| E2E acceptance criterion fails | Must-fix; the spec is the contract. |
+| E2E flaky test detected | Should-fix; quarantine and log for resolution within 2 sprints. |
+| App not running for E2E | Skip E2E with warning; log in report. Do not block verification. |
 | Review agent fails to spawn | Retry with isolation; if persistent, fall back to manual checklist with bias warning. |
 | Cross-agent escalation (2+ agents flag same area) | Auto-classify as blocker regardless of individual severity. |
 
 ## Governance Interaction
 
-- **Uses Agents**: `code-reviewer`, `security-reviewer`, `architect`, `qa-verifier` — all spawned with `isolation: "worktree"`.
+- **Uses Agents**: `code-reviewer`, `security-reviewer`, `architect`, `qa-verifier`, `e2e-tester` — all spawned with `isolation: "worktree"`.
 - **Reads**: All governance rules, architecture spec, NFRs.
 - **Validates**: Implementation against the full governance standard.
 - **Reports**: Findings are structured for governance traceability.

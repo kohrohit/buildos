@@ -85,7 +85,16 @@ The security-reviewer now has structured scan data alongside the code. It should
    - Review dimensions: acceptance criteria coverage, test quality, edge cases, pyramid balance, flaky tests
    - Findings: untested criteria, weak assertions, missing edge cases
 
-6. **NFR Assessment** (orchestrator)
+6. **Spawn E2E Tester Agent** (isolated, context-free — if web app)
+   - `Agent(isolation: "worktree")`
+   - Prompt preamble: *"You are testing an application you have never seen before. You do not know how it was built, what framework it uses, or how the code is structured. You know only what the application should do (acceptance criteria) and where it runs (base URL). Verify every acceptance criterion through the browser using Playwright."*
+   - Pass: stripped acceptance criteria + known routes/pages + base URL + auth test credentials
+   - **Agent does NOT receive**: source code, architecture docs, git history, implementation details
+   - Agent generates Playwright tests from criteria, runs via `npx playwright test --headless`
+   - Output: pass/fail per acceptance criterion, screenshots on failure, HTML report
+   - If app is not running or not a web app, skip and log reason
+
+7. **NFR Assessment** (orchestrator)
    - Performance: any obvious bottlenecks or anti-patterns
    - Reliability: error recovery, graceful degradation
    - Observability: logging, metrics, tracing readiness
@@ -137,6 +146,7 @@ Deep Review Complete (Independent/Isolated)
   Security Review:  {score}/5 — {summary}
   Architecture:     {score}/5 — {summary}
   QA Verification:  {score}/5 — {summary}
+  E2E Testing:      {passed}/{total} criteria — {PASS|FAIL|SKIPPED}
 
   Cross-Agent Escalations: {n} (areas flagged by multiple agents)
 
